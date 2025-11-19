@@ -1,0 +1,1464 @@
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { supabase } from './supabaseClient';
+import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut } from 'lucide-react';
+
+const AppContext = createContext();
+const useApp = () => useContext(AppContext);
+
+function Auth() {
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        setMessage('Verifiez votre email pour confirmer votre inscription');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2 text-center">Ma To-Do List</h1>
+        <p className="text-gray-600 mb-8 text-center">Organisez votre vie simplement</p>
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="vous@exemple.com"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="mot de passe"
+              required
+            />
+          </div>
+
+          {message && (
+            <div className={`p-3 rounded-lg text-sm ${
+              message.includes('Verifiez') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}>
+              {message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Chargement...' : isSignUp ? 'Inscrire' : 'Se connecter'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+          >
+            {isSignUp ? 'Deja un compte ? Se connecter' : 'Pas de compte ? Inscrire'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [themes, setThemes] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [activeTheme, setActiveTheme] = useState(null);
+  const [view, setView] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    try {
+      const { data: themesData } = await supabase
+        .from('themes')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      const { data: projectsData } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      const { data: tasksData } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      setThemes(themesData || []);
+      setProjects(projectsData || []);
+      setTasks(tasksData || []);
+
+      if (themesData && themesData.length > 0 && !activeTheme) {
+        setActiveTheme(themesData[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
+
+  const addTheme = async (theme) => {
+    const { data, error } = await supabase
+      .from('themes')
+      .insert([{ ...theme, user_id: user.id }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setThemes([...themes, data]);
+      if (!activeTheme) setActiveTheme(data.id);
+    }
+  };
+
+  const updateTheme = async (themeId, updates) => {
+    const { data, error } = await supabase
+      .from('themes')
+      .update(updates)
+      .eq('id', themeId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setThemes(themes.map(t => t.id === themeId ? data : t));
+    }
+  };
+
+  const deleteTheme = async (themeId) => {
+    const { error } = await supabase
+      .from('themes')
+      .delete()
+      .eq('id', themeId);
+
+    if (!error) {
+      setThemes(themes.filter(t => t.id !== themeId));
+      if (activeTheme === themeId) {
+        setActiveTheme(themes[0]?.id || null);
+      }
+    }
+  };
+
+  const addProject = async (themeId, project) => {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert([{ ...project, theme_id: themeId, user_id: user.id }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setProjects([...projects, data]);
+    }
+  };
+
+  const updateProject = async (projectId, updates) => {
+    const { data, error } = await supabase
+      .from('projects')
+      .update(updates)
+      .eq('id', projectId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setProjects(projects.map(p => p.id === projectId ? data : p));
+    }
+  };
+
+  const deleteProject = async (projectId) => {
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (!error) {
+      setProjects(projects.filter(p => p.id !== projectId));
+    }
+  };
+
+  const addTask = async (projectId, task) => {
+    const taskData = {
+      ...task,
+      project_id: projectId,
+      user_id: user.id,
+      deadline: task.deadline || null
+    };
+    
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert([taskData])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTasks([...tasks, data]);
+    }
+  };
+
+  const updateTask = async (taskId, updates) => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTasks(tasks.map(t => t.id === taskId ? data : t));
+    }
+  };
+
+  const toggleTask = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ completed: !task.completed })
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTasks(tasks.map(t => t.id === taskId ? data : t));
+    }
+  };
+
+  const deleteTask = async (taskId) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+
+    if (!error) {
+      setTasks(tasks.filter(t => t.id !== taskId));
+    }
+  };
+
+  const getUrgentTasks = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return tasks
+      .filter(task => {
+        if (task.completed) return false;
+        if (!task.deadline) return false;
+        return task.deadline <= today;
+      })
+      .map(task => {
+        const project = projects.find(p => p.id === task.project_id);
+        const theme = themes.find(t => t.id === project?.theme_id);
+        return {
+          ...task,
+          projectName: project?.name,
+          themeName: theme?.name,
+          themeColor: theme?.color
+        };
+      })
+      .sort((a, b) => a.priority - b.priority);
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setThemes([]);
+    setProjects([]);
+    setTasks([]);
+    setActiveTheme(null);
+  };
+
+  const value = {
+    user,
+    themes,
+    projects,
+    tasks,
+    activeTheme,
+    setActiveTheme,
+    view,
+    setView,
+    mobileMenuOpen,
+    setMobileMenuOpen,
+    addTheme,
+    updateTheme,
+    deleteTheme,
+    addProject,
+    updateProject,
+    deleteProject,
+    addTask,
+    updateTask,
+    toggleTask,
+    deleteTask,
+    getUrgentTasks,
+    signOut
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-lg text-gray-600">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+function MobileHeader() {
+  const { setMobileMenuOpen, view } = useApp();
+  const viewTitles = { dashboard: 'Dashboard', projects: 'Projets' };
+
+  return (
+    <div className="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-40">
+      <div className="flex items-center justify-between p-4">
+        <button onClick={() => setMobileMenuOpen(true)} className="p-2 -ml-2">
+          <Menu size={24} />
+        </button>
+        <h1 className="text-lg font-bold">{viewTitles[view]}</h1>
+        <div className="w-10"></div>
+      </div>
+    </div>
+  );
+}
+
+function MobileMenu() {
+  const { mobileMenuOpen, setMobileMenuOpen, view, setView, themes, activeTheme, setActiveTheme, signOut, addTheme } = useApp();
+  const [showThemeForm, setShowThemeForm] = useState(false);
+
+  const handleThemeClick = (themeId) => {
+    setActiveTheme(themeId);
+    setView('projects');
+    setMobileMenuOpen(false);
+  };
+
+  if (!mobileMenuOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
+      <div className="fixed inset-y-0 left-0 w-80 max-w-[85vw] bg-white shadow-xl z-50 lg:hidden overflow-y-auto">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h1 className="text-xl font-bold">Ma To-Do</h1>
+          <button onClick={() => setMobileMenuOpen(false)} className="p-2">
+            <X size={24} />
+          </button>
+        </div>
+
+        <nav className="p-4 space-y-2">
+          <button
+            onClick={() => { setView('dashboard'); setMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
+              view === 'dashboard' ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+            }`}
+          >
+            <Home size={20} />
+            Dashboard
+          </button>
+
+          <button
+            onClick={() => { setView('projects'); setMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
+              view === 'projects' ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+            }`}
+          >
+            <CheckCircle size={20} />
+            Projets
+          </button>
+        </nav>
+
+        <div className="p-4 border-t">
+          <div className="flex items-center justify-between mb-3 px-2">
+            <h3 className="text-sm font-semibold text-gray-600">THEMES</h3>
+            <button
+              onClick={() => setShowThemeForm(true)}
+              className="text-blue-600 hover:text-blue-700"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+          <div className="space-y-1">
+            {themes.map(theme => (
+              <button
+                key={theme.id}
+                onClick={() => handleThemeClick(theme.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg ${
+                  activeTheme === theme.id ? 'bg-gray-100 font-medium' : ''
+                }`}
+              >
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: theme.color }} />
+                <span className="text-sm">{theme.name}</span>
+              </button>
+            ))}
+            {themes.length === 0 && (
+              <p className="text-xs text-gray-500 text-center py-2">Aucun theme</p>
+            )}
+          </div>
+        </div>
+
+        <div className="p-4 border-t">
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50"
+          >
+            <LogOut size={20} />
+            Deconnexion
+          </button>
+        </div>
+
+        {showThemeForm && (
+          <ThemeFormModal
+            onClose={() => setShowThemeForm(false)}
+            onSubmit={(theme) => {
+              addTheme(theme);
+              setShowThemeForm(false);
+              setMobileMenuOpen(false);
+            }}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+function Dashboard() {
+  const { getUrgentTasks, toggleTask, themes, projects } = useApp();
+  const urgentTasks = getUrgentTasks();
+  const today = new Date().toISOString().split('T')[0];
+
+  const totalProjects = projects.length;
+  const overdueTasks = urgentTasks.filter(t => t.deadline < today).length;
+  const todayTasks = urgentTasks.filter(t => t.deadline === today).length;
+
+  return (
+    <div className="p-4 pb-24">
+      <div className="hidden lg:block mb-6">
+        <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+        <p className="text-gray-600">Vos taches urgentes</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-red-600 font-medium">En retard</p>
+              <p className="text-2xl font-bold text-red-700">{overdueTasks}</p>
+            </div>
+            <Calendar className="text-red-400" size={28} />
+          </div>
+        </div>
+        
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-orange-600 font-medium">Aujourd hui</p>
+              <p className="text-2xl font-bold text-orange-700">{todayTasks}</p>
+            </div>
+            <CheckCircle className="text-orange-400" size={28} />
+          </div>
+        </div>
+        
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-blue-600 font-medium">Projets</p>
+              <p className="text-2xl font-bold text-blue-700">{totalProjects}</p>
+            </div>
+            <Home className="text-blue-400" size={28} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="p-4 border-b">
+          <h2 className="text-lg font-semibold">Taches a faire</h2>
+        </div>
+        
+        <div className="divide-y">
+          {urgentTasks.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              <CheckCircle className="mx-auto mb-3 text-green-400" size={48} />
+              <p className="font-medium">Aucune tache urgente</p>
+              <p className="text-sm">Vous etes a jour</p>
+            </div>
+          ) : (
+            urgentTasks.map(task => {
+              const isOverdue = task.deadline < today;
+              
+              return (
+                <div key={task.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <button onClick={() => toggleTask(task.id)} className="mt-1">
+                      {task.completed ? (
+                        <CheckCircle className="text-green-500" size={20} />
+                      ) : (
+                        <Circle className="text-gray-400" size={20} />
+                      )}
+                    </button>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                          {task.title}
+                        </h3>
+                        <span
+                          className="px-2 py-0.5 rounded text-xs font-medium"
+                          style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
+                        >
+                          {task.themeName}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          task.priority === 1 ? 'bg-red-100 text-red-700' :
+                          task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          P{task.priority}
+                        </span>
+                      </div>
+                      
+                      <p className="text-sm text-gray-600 mb-2">{task.projectName}</p>
+                      
+                      {task.description && (
+                        <p className="text-sm text-gray-500 mb-2">{task.description}</p>
+                      )}
+                      
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                          <Calendar size={14} />
+                          {isOverdue ? 'En retard' : 'Aujourd hui'} - {task.deadline}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Projects() {
+  const { themes, projects, tasks, activeTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask } = useApp();
+  const [expandedProjects, setExpandedProjects] = useState({});
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
+  const [activeProject, setActiveProject] = useState(null);
+  const [filterTheme, setFilterTheme] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [searchText, setSearchText] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  
+  React.useEffect(() => {
+    if (activeTheme) {
+      setFilterTheme(activeTheme);
+    }
+  }, [activeTheme]);
+  
+  const activeTasks = tasks.filter(t => !t.completed);
+  const archivedTasks = tasks.filter(t => t.completed);
+  
+  let filteredProjects = filterTheme === 'all' 
+    ? projects 
+    : projects.filter(p => p.theme_id === filterTheme);
+  
+  if (searchText.trim()) {
+    filteredProjects = filteredProjects.filter(p => 
+      p.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      p.description?.toLowerCase().includes(searchText.toLowerCase())
+    );
+  }
+  
+  filteredProjects = [...filteredProjects].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    if (sortBy === 'theme') {
+      const themeA = themes.find(t => t.id === a.theme_id)?.name || '';
+      const themeB = themes.find(t => t.id === b.theme_id)?.name || '';
+      return themeA.localeCompare(themeB);
+    }
+    return 0;
+  });
+  
+  const toggleProject = (projectId) => {
+    setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
+  const filterTasksByPriority = (tasksList) => {
+    if (filterPriority === 'all') return tasksList;
+    return tasksList.filter(t => t.priority === parseInt(filterPriority));
+  };
+
+  return (
+    <div className="p-4 pb-24">
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold mb-2">Projets</h1>
+            <div className="flex gap-4 text-sm">
+              <button
+                onClick={() => setShowArchived(false)}
+                className={`pb-1 ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+              >
+                Actives ({activeTasks.length})
+              </button>
+              <button
+                onClick={() => setShowArchived(true)}
+                className={`pb-1 ${showArchived ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+              >
+                Archivees ({archivedTasks.length})
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowProjectForm(true)}
+            className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={20} />
+            Nouveau Projet
+          </button>
+        </div>
+
+        <div className="space-y-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Rechercher un projet</label>
+            <input
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Nom du projet..."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
+              <select
+                value={filterTheme}
+                onChange={(e) => setFilterTheme(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Tous les themes</option>
+                {themes.map(theme => (
+                  <option key={theme.id} value={theme.id}>{theme.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Priorite</label>
+              <select
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Toutes les priorites</option>
+                <option value="1">Priorite 1 (Haute)</option>
+                <option value="2">Priorite 2 (Moyenne)</option>
+                <option value="3">Priorite 3 (Basse)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Trier par</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="name">Nom</option>
+                <option value="theme">Theme</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={() => setShowProjectForm(true)}
+        className="lg:hidden fixed bottom-20 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-30"
+      >
+        <Plus size={24} />
+      </button>
+
+      <div className="space-y-3">
+        {filteredProjects.map(project => {
+          let projectTasks = showArchived 
+            ? archivedTasks.filter(t => t.project_id === project.id)
+            : activeTasks.filter(t => t.project_id === project.id);
+          
+          projectTasks = filterTasksByPriority(projectTasks);
+          
+          const projectTheme = themes.find(t => t.id === project.theme_id);
+          
+          const hasAnyTasks = showArchived 
+            ? archivedTasks.filter(t => t.project_id === project.id).length > 0
+            : activeTasks.filter(t => t.project_id === project.id).length > 0;
+            
+          if (!hasAnyTasks && projectTasks.length === 0) {
+            return null;
+          }
+          
+          return (
+            <div key={project.id} className="bg-white rounded-lg shadow-sm border">
+              <div className="p-4 flex items-center justify-between hover:bg-gray-50 group">
+                <div 
+                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                  onClick={() => toggleProject(project.id)}
+                >
+                  {expandedProjects[project.id] ? 
+                    <ChevronDown size={20} className="flex-shrink-0" /> : 
+                    <ChevronRight size={20} className="flex-shrink-0" />
+                  }
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-sm sm:text-base truncate">{project.name}</h3>
+                      {projectTheme && (
+                        <span
+                          className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex items-center gap-1"
+                          style={{ backgroundColor: projectTheme.color + '20', color: projectTheme.color }}
+                        >
+                          <div 
+                            className="w-2 h-2 rounded-full" 
+                            style={{ backgroundColor: projectTheme.color }}
+                          />
+                          {projectTheme.name}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">{project.description}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-gray-600 flex-shrink-0">
+                    {projectTasks.length} tache{projectTasks.length > 1 ? 's' : ''}
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingProject(project);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded transition-opacity"
+                  >
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {expandedProjects[project.id] && (
+                <div className="border-t p-4 bg-gray-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-sm">
+                      {showArchived ? 'Taches archivees' : 'Taches actives'}
+                    </h4>
+                    {!showArchived && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveProject(project.id);
+                          setShowTaskForm(true);
+                        }}
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        <Plus size={16} />
+                        Ajouter
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {projectTasks
+                      .sort((a, b) => a.priority - b.priority)
+                      .map(task => (
+                        <TaskItem 
+                          key={task.id} 
+                          task={task} 
+                          showArchived={showArchived}
+                          onDelete={() => deleteTask(task.id)}
+                          onEdit={() => setEditingTask(task)}
+                          onUnarchive={() => toggleTask(task.id)}
+                        />
+                      ))}
+                    
+                    {projectTasks.length === 0 && (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        {filterPriority !== 'all' 
+                          ? `Aucune tache avec cette priorite`
+                          : showArchived ? 'Aucune tache archivee' : 'Aucune tache active'
+                        }
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {filteredProjects.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <p className="mb-2">Aucun projet trouve</p>
+            {!searchText && (
+              <button
+                onClick={() => setShowProjectForm(true)}
+                className="text-blue-600 font-medium text-sm hover:text-blue-700"
+              >
+                Creer votre premier projet
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showProjectForm && (
+        <ProjectFormModal
+          themes={themes}
+          defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
+          onClose={() => setShowProjectForm(false)}
+          onSubmit={(project) => {
+            addProject(project.themeId, { name: project.name, description: project.description });
+            setShowProjectForm(false);
+          }}
+        />
+      )}
+
+      {editingProject && (
+        <ProjectFormModal
+          themes={themes}
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onSubmit={(project) => {
+            updateProject(editingProject.id, { 
+              name: project.name, 
+              description: project.description,
+              theme_id: project.themeId 
+            });
+            setEditingProject(null);
+          }}
+          onDelete={() => {
+            if (window.confirm('Supprimer ce projet ? Toutes les taches seront aussi supprimees.')) {
+              deleteProject(editingProject.id);
+              setEditingProject(null);
+            }
+          }}
+        />
+      )}
+
+      {showTaskForm && (
+        <TaskFormModal
+          onClose={() => { setShowTaskForm(false); setActiveProject(null); }}
+          onSubmit={(task) => {
+            if (activeProject) {
+              addTask(activeProject, task);
+            }
+            setShowTaskForm(false);
+            setActiveProject(null);
+          }}
+        />
+      )}
+
+      {editingTask && (
+        <TaskFormModal
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSubmit={(task) => {
+            updateTask(editingTask.id, task);
+            setEditingTask(null);
+          }}
+          onDelete={() => {
+            if (window.confirm('Supprimer definitivement cette tache ?')) {
+              deleteTask(editingTask.id);
+              setEditingTask(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TaskItem({ task, showArchived, onDelete, onEdit, onUnarchive }) {
+  const { toggleTask } = useApp();
+  
+  return (
+    <div className="bg-white p-3 rounded border group hover:bg-gray-50">
+      <div className="flex items-start gap-2">
+        {!showArchived && (
+          <button onClick={() => toggleTask(task.id)} className="mt-0.5">
+            <Circle className="text-gray-400" size={18} />
+          </button>
+        )}
+        
+        <div 
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={onEdit}
+        >
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <h4 className="font-medium text-xs">
+              {task.title}
+            </h4>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+              task.priority === 1 ? 'bg-red-100 text-red-700' :
+              task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+              'bg-green-100 text-green-700'
+            }`}>
+              P{task.priority}
+            </span>
+          </div>
+          
+          {task.description && (
+            <p className="text-xs text-gray-500 mb-1">{task.description}</p>
+          )}
+          
+          {task.deadline ? (
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+              <Calendar size={12} />
+              {task.deadline}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400 italic">Pas de deadline</p>
+          )}
+        </div>
+
+        {showArchived && (
+          <div className="flex gap-1 flex-shrink-0">
+            <button
+              onClick={onUnarchive}
+              className="p-2 text-green-600 hover:bg-green-50 rounded"
+              title="Desarchiver"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Supprimer definitivement cette tache ?')) {
+                  onDelete();
+                }
+              }}
+              className="p-2 text-red-600 hover:bg-red-50 rounded"
+              title="Supprimer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, onDelete }) {
+  const [name, setName] = useState(project?.name || '');
+  const [description, setDescription] = useState(project?.description || '');
+  const [themeId, setThemeId] = useState(project?.theme_id || defaultTheme || themes[0]?.id || '');
+
+  const handleSubmit = () => {
+    if (name.trim() && themeId) {
+      onSubmit({ name, description, themeId });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
+      <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">{project ? 'Modifier le Projet' : 'Nouveau Projet'}</h2>
+          <button onClick={onClose} className="p-2">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-4">
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Theme</label>
+            <select
+              value={themeId}
+              onChange={(e) => setThemeId(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="">Choisir un theme</option>
+              {themes.map(theme => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Nom du projet</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Ex: Site Web Client A"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows="3"
+              placeholder="Decrivez votre projet..."
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            {project && onDelete && (
+              <button
+                onClick={onDelete}
+                className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+              >
+                Supprimer
+              </button>
+            )}
+            <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
+              Annuler
+            </button>
+            <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
+              {project ? 'Modifier' : 'Creer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
+  const [title, setTitle] = useState(task?.title || '');
+  const [description, setDescription] = useState(task?.description || '');
+  const [deadline, setDeadline] = useState(task?.deadline || '');
+  const [priority, setPriority] = useState(task?.priority || 2);
+
+  const handleSubmit = () => {
+    if (title.trim()) {
+      onSubmit({ title, description, deadline: deadline || null, priority, completed: false });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
+      <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">{task ? 'Modifier la Tache' : 'Nouvelle Tache'}</h2>
+          <button onClick={onClose} className="p-2">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-4">
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Titre</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Ex: Finaliser les maquettes"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows="2"
+              placeholder="Details..."
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
+            <input
+              type="date"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Priorite</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriority(p)}
+                  className={`py-3 rounded-lg font-medium ${
+                    priority === p
+                      ? p === 1 ? 'bg-red-600 text-white' :
+                        p === 2 ? 'bg-orange-600 text-white' :
+                        'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  P{p}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            {task && onDelete && (
+              <button
+                onClick={onDelete}
+                className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+              >
+                Supprimer
+              </button>
+            )}
+            <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
+              Annuler
+            </button>
+            <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
+              {task ? 'Modifier' : 'Creer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BottomNav() {
+  const { view, setView } = useApp();
+
+  return (
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30">
+      <div className="grid grid-cols-2 h-16">
+        <button
+          onClick={() => setView('dashboard')}
+          className={`flex flex-col items-center justify-center gap-1 ${
+            view === 'dashboard' ? 'text-blue-600' : 'text-gray-600'
+          }`}
+        >
+          <Home size={24} />
+          <span className="text-xs font-medium">Dashboard</span>
+        </button>
+        
+        <button
+          onClick={() => setView('projects')}
+          className={`flex flex-col items-center justify-center gap-1 ${
+            view === 'projects' ? 'text-blue-600' : 'text-gray-600'
+          }`}
+        >
+          <CheckCircle size={24} />
+          <span className="text-xs font-medium">Projets</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DesktopSidebar() {
+  const { view, setView, themes, activeTheme, setActiveTheme, signOut, addTheme, updateTheme, deleteTheme } = useApp();
+  const [showThemeForm, setShowThemeForm] = useState(false);
+  const [editingTheme, setEditingTheme] = useState(null);
+
+  const handleThemeClick = (themeId) => {
+    setActiveTheme(themeId);
+    setView('projects');
+  };
+
+  return (
+    <div className="hidden lg:block fixed left-0 top-0 h-full w-64 bg-white shadow-lg">
+      <div className="p-6 border-b">
+        <h1 className="text-2xl font-bold">Ma To-Do</h1>
+      </div>
+
+      <nav className="p-4 space-y-2">
+        <button
+          onClick={() => setView('dashboard')}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
+            view === 'dashboard' ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <Home size={20} />
+          Dashboard
+        </button>
+
+        <button
+          onClick={() => setView('projects')}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg ${
+            view === 'projects' ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <CheckCircle size={20} />
+          Projets
+        </button>
+      </nav>
+
+      <div className="p-4 border-t">
+        <div className="flex items-center justify-between mb-3 px-2">
+          <h3 className="text-sm font-semibold text-gray-600">THEMES</h3>
+          <button
+            onClick={() => setShowThemeForm(true)}
+            className="text-blue-600 hover:text-blue-700"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+        <div className="space-y-1">
+          {themes.map(theme => (
+            <div
+              key={theme.id}
+              className={`group flex items-center gap-3 px-3 py-2 rounded-lg ${
+                activeTheme === theme.id ? 'bg-gray-100' : 'hover:bg-gray-50'
+              }`}
+            >
+              <button
+                onClick={() => handleThemeClick(theme.id)}
+                className="flex items-center gap-3 flex-1 min-w-0"
+              >
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: theme.color }} />
+                <span className="text-sm truncate">{theme.name}</span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingTheme(theme);
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          {themes.length === 0 && (
+            <p className="text-xs text-gray-500 text-center py-2">Aucun theme</p>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4 border-t absolute bottom-0 left-0 right-0">
+        <button
+          onClick={signOut}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50"
+        >
+          <LogOut size={20} />
+          Deconnexion
+        </button>
+      </div>
+
+      {showThemeForm && (
+        <ThemeFormModal
+          onClose={() => setShowThemeForm(false)}
+          onSubmit={(theme) => {
+            addTheme(theme);
+            setShowThemeForm(false);
+          }}
+        />
+      )}
+
+      {editingTheme && (
+        <ThemeFormModal
+          theme={editingTheme}
+          onClose={() => setEditingTheme(null)}
+          onSubmit={(theme) => {
+            updateTheme(editingTheme.id, theme);
+            setEditingTheme(null);
+          }}
+          onDelete={() => {
+            if (window.confirm('Supprimer ce theme ? Tous les projets et taches seront aussi supprimes.')) {
+              deleteTheme(editingTheme.id);
+              setEditingTheme(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ThemeFormModal({ theme, onClose, onSubmit, onDelete }) {
+  const [name, setName] = useState(theme?.name || '');
+  const [color, setColor] = useState(theme?.color || '#3b82f6');
+
+  const colors = [
+    { name: 'Bleu', value: '#3b82f6' },
+    { name: 'Vert', value: '#10b981' },
+    { name: 'Violet', value: '#8b5cf6' },
+    { name: 'Rose', value: '#ec4899' },
+    { name: 'Orange', value: '#f97316' },
+    { name: 'Rouge', value: '#ef4444' },
+    { name: 'Jaune', value: '#eab308' },
+    { name: 'Gris', value: '#6b7280' },
+  ];
+
+  const handleSubmit = () => {
+    if (name.trim()) {
+      onSubmit({ name, color });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg w-full max-w-md p-6 m-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">{theme ? 'Modifier le Theme' : 'Nouveau Theme'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-2">Nom du theme</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Ex: Personnel, Travail..."
+          />
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-3">Couleur</label>
+          <div className="grid grid-cols-4 gap-3">
+            {colors.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => setColor(c.value)}
+                className={`relative h-12 rounded-lg transition-all ${
+                  color === c.value ? 'ring-2 ring-offset-2 ring-blue-500 scale-110' : 'hover:scale-105'
+                }`}
+                style={{ backgroundColor: c.value }}
+              >
+                {color === c.value && (
+                  <CheckCircle className="absolute inset-0 m-auto text-white" size={24} />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          {theme && onDelete && (
+            <button
+              onClick={onDelete}
+              className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+            >
+              Supprimer
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium hover:bg-gray-200"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+          >
+            {theme ? 'Modifier' : 'Creer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <AppProvider>
+      <MainApp />
+    </AppProvider>
+  );
+}
+
+function MainApp() {
+  const { view, user } = useApp();
+
+  if (!user) return null;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <DesktopSidebar />
+      <MobileHeader />
+      <MobileMenu />
+      
+      <div className="lg:ml-64 pt-16 lg:pt-0">
+        {view === 'dashboard' && <Dashboard />}
+        {view === 'projects' && <Projects />}
+      </div>
+      
+      <BottomNav />
+    </div>
+  );
+}
+
+export default App;
