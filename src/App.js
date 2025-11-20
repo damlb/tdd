@@ -165,6 +165,18 @@ function AppProvider({ children }) {
     }
   };
 
+  const addProject = async (themeId, project) => {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert([{ ...project, theme_id: themeId, user_id: user.id }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setProjects([...projects, data]);
+    }
+  };
+
   const updateTheme = async (themeId, updates) => {
     const { data, error } = await supabase
       .from('themes')
@@ -192,15 +204,68 @@ function AppProvider({ children }) {
     }
   };
 
-  const addProject = async (themeId, project) => {
+  const addTask = async (projectId, task) => {
+    const taskData = {
+      ...task,
+      project_id: projectId,
+      user_id: user.id,
+      deadline: task.deadline || null
+    };
+    
     const { data, error } = await supabase
-      .from('projects')
-      .insert([{ ...project, theme_id: themeId, user_id: user.id }])
+      .from('tasks')
+      .insert([taskData])
       .select()
       .single();
 
     if (!error && data) {
-      setProjects([...projects, data]);
+      setTasks([...tasks, data]);
+    }
+  };
+
+  const toggleTask = async (taskId, isQuickList) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Si c'est une liste rapide et que la tâche n'est pas complétée, on la supprime
+    if (isQuickList && !task.completed) {
+      await deleteTask(taskId);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ completed: !task.completed })
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTasks(tasks.map(t => t.id === taskId ? data : t));
+    }
+  };
+
+  const deleteTask = async (taskId) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId);
+
+    if (!error) {
+      setTasks(tasks.filter(t => t.id !== taskId));
+    }
+  };
+
+  const updateTask = async (taskId, updates) => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTasks(tasks.map(t => t.id === taskId ? data : t));
     }
   };
 
@@ -225,65 +290,6 @@ function AppProvider({ children }) {
 
     if (!error) {
       setProjects(projects.filter(p => p.id !== projectId));
-    }
-  };
-
-  const addTask = async (projectId, task) => {
-    const taskData = {
-      ...task,
-      project_id: projectId,
-      user_id: user.id,
-      deadline: task.deadline || null
-    };
-    
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert([taskData])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setTasks([...tasks, data]);
-    }
-  };
-
-  const updateTask = async (taskId, updates) => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .update(updates)
-      .eq('id', taskId)
-      .select()
-      .single();
-
-    if (!error && data) {
-      setTasks(tasks.map(t => t.id === taskId ? data : t));
-    }
-  };
-
-  const toggleTask = async (taskId) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ completed: !task.completed })
-      .eq('id', taskId)
-      .select()
-      .single();
-
-    if (!error && data) {
-      setTasks(tasks.map(t => t.id === taskId ? data : t));
-    }
-  };
-
-  const deleteTask = async (taskId) => {
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', taskId);
-
-    if (!error) {
-      setTasks(tasks.filter(t => t.id !== taskId));
     }
   };
 
@@ -539,7 +545,7 @@ function Dashboard() {
               return (
                 <div key={task.id} className="p-4">
                   <div className="flex items-start gap-3">
-                    <button onClick={() => toggleTask(task.id)} className="mt-1">
+                    <button onClick={() => toggleTask(task.id, false)} className="mt-1">
                       {task.completed ? (
                         <CheckCircle className="text-green-500" size={20} />
                       ) : (
@@ -769,6 +775,11 @@ function Projects() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-semibold text-sm sm:text-base truncate">{project.name}</h3>
+                      {project.is_quick_list && (
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                          🛒 Liste rapide
+                        </span>
+                      )}
                       {projectTheme && (
                         <span
                           className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex items-center gap-1"
@@ -808,7 +819,7 @@ function Projects() {
                 <div className="border-t p-4 bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-sm">
-                      {showArchived ? 'Taches archivees' : 'Taches actives'}
+                      {showArchived ? 'Taches archivees' : project.is_quick_list ? 'Articles' : 'Taches actives'}
                     </h4>
                     {!showArchived && (
                       <button
@@ -833,9 +844,10 @@ function Projects() {
                           key={task.id} 
                           task={task} 
                           showArchived={showArchived}
+                          isQuickList={project.is_quick_list}
                           onDelete={() => deleteTask(task.id)}
                           onEdit={() => setEditingTask(task)}
-                          onUnarchive={() => toggleTask(task.id)}
+                          onUnarchive={() => toggleTask(task.id, false)}
                         />
                       ))}
                     
@@ -843,7 +855,7 @@ function Projects() {
                       <p className="text-sm text-gray-500 text-center py-4">
                         {filterPriority !== 'all' 
                           ? `Aucune tache avec cette priorite`
-                          : showArchived ? 'Aucune tache archivee' : 'Aucune tache active'
+                          : showArchived ? 'Aucune tache archivee' : project.is_quick_list ? 'Liste vide' : 'Aucune tache active'
                         }
                       </p>
                     )}
@@ -875,7 +887,7 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-            addProject(project.themeId, { name: project.name, description: project.description });
+            addProject(project.themeId, { name: project.name, description: project.description, is_quick_list: project.isQuickList });
             setShowProjectForm(false);
           }}
         />
@@ -890,7 +902,8 @@ function Projects() {
             updateProject(editingProject.id, { 
               name: project.name, 
               description: project.description,
-              theme_id: project.themeId 
+              theme_id: project.themeId,
+              is_quick_list: project.isQuickList
             });
             setEditingProject(null);
           }}
@@ -905,6 +918,7 @@ function Projects() {
 
       {showTaskForm && (
         <TaskFormModal
+          isQuickList={projects.find(p => p.id === activeProject)?.is_quick_list}
           onClose={() => { setShowTaskForm(false); setActiveProject(null); }}
           onSubmit={(task) => {
             if (activeProject) {
@@ -919,6 +933,7 @@ function Projects() {
       {editingTask && (
         <TaskFormModal
           task={editingTask}
+          isQuickList={projects.find(p => p.id === editingTask.project_id)?.is_quick_list}
           onClose={() => setEditingTask(null)}
           onSubmit={(task) => {
             updateTask(editingTask.id, task);
@@ -936,14 +951,14 @@ function Projects() {
   );
 }
 
-function TaskItem({ task, showArchived, onDelete, onEdit, onUnarchive }) {
+function TaskItem({ task, showArchived, isQuickList, onDelete, onEdit, onUnarchive }) {
   const { toggleTask } = useApp();
   
   return (
     <div className="bg-white p-3 rounded border group hover:bg-gray-50">
       <div className="flex items-start gap-2">
         {!showArchived && (
-          <button onClick={() => toggleTask(task.id)} className="mt-0.5">
+          <button onClick={() => toggleTask(task.id, isQuickList)} className="mt-0.5">
             <Circle className="text-gray-400" size={18} />
           </button>
         )}
@@ -956,26 +971,30 @@ function TaskItem({ task, showArchived, onDelete, onEdit, onUnarchive }) {
             <h4 className="font-medium text-xs">
               {task.title}
             </h4>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-              task.priority === 1 ? 'bg-red-100 text-red-700' :
-              task.priority === 2 ? 'bg-orange-100 text-orange-700' :
-              'bg-green-100 text-green-700'
-            }`}>
-              P{task.priority}
-            </span>
+            {!isQuickList && (
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                task.priority === 1 ? 'bg-red-100 text-red-700' :
+                task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                'bg-green-100 text-green-700'
+              }`}>
+                P{task.priority}
+              </span>
+            )}
           </div>
           
-          {task.description && (
+          {task.description && !isQuickList && (
             <p className="text-xs text-gray-500 mb-1">{task.description}</p>
           )}
           
-          {task.deadline ? (
-            <p className="text-xs text-gray-500 flex items-center gap-1">
-              <Calendar size={12} />
-              {task.deadline}
-            </p>
-          ) : (
-            <p className="text-xs text-gray-400 italic">Pas de deadline</p>
+          {!isQuickList && (
+            task.deadline ? (
+              <p className="text-xs text-gray-500 flex items-center gap-1">
+                <Calendar size={12} />
+                {task.deadline}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 italic">Pas de deadline</p>
+            )
           )}
         </div>
 
@@ -1012,10 +1031,11 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [themeId, setThemeId] = useState(project?.theme_id || defaultTheme || themes[0]?.id || '');
+  const [isQuickList, setIsQuickList] = useState(project?.is_quick_list || false);
 
   const handleSubmit = () => {
     if (name.trim() && themeId) {
-      onSubmit({ name, description, themeId });
+      onSubmit({ name, description, themeId, isQuickList });
     }
   };
 
@@ -1069,6 +1089,24 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
             />
           </div>
           
+          <div className="mb-4">
+            <label className="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
+              <input
+                type="checkbox"
+                checked={isQuickList}
+                onChange={(e) => setIsQuickList(e.target.checked)}
+                className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Liste rapide</span>
+                  <span className="text-lg">🛒</span>
+                </div>
+                <p className="text-xs text-gray-500">Les tâches cochées disparaissent immédiatement (idéal pour les courses ou checklists)</p>
+              </div>
+            </label>
+          </div>
+          
           <div className="flex gap-2">
             {project && onDelete && (
               <button
@@ -1091,7 +1129,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
   );
 }
 
-function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
+function TaskFormModal({ task, isQuickList, onClose, onSubmit, onDelete }) {
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [deadline, setDeadline] = useState(task?.deadline || '');
@@ -1107,7 +1145,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
       <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{task ? 'Modifier la Tache' : 'Nouvelle Tache'}</h2>
+          <h2 className="text-lg font-bold">{task ? 'Modifier' : isQuickList ? 'Ajouter un article' : 'Nouvelle Tache'}</h2>
           <button onClick={onClose} className="p-2">
             <X size={24} />
           </button>
@@ -1115,58 +1153,63 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
         
         <div className="p-4">
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Titre</label>
+            <label className="block text-sm font-medium mb-2">{isQuickList ? 'Article' : 'Titre'}</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Finaliser les maquettes"
+              placeholder={isQuickList ? "Ex: Pain, Lait..." : "Ex: Finaliser les maquettes"}
+              autoFocus
             />
           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows="2"
-              placeholder="Details..."
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
-            <input
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Priorite</label>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPriority(p)}
-                  className={`py-3 rounded-lg font-medium ${
-                    priority === p
-                      ? p === 1 ? 'bg-red-600 text-white' :
-                        p === 2 ? 'bg-orange-600 text-white' :
-                        'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  P{p}
-                </button>
-              ))}
-            </div>
-          </div>
+          {!isQuickList && (
+            <>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                  placeholder="Details..."
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Priorite</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      className={`py-3 rounded-lg font-medium ${
+                        priority === p
+                          ? p === 1 ? 'bg-red-600 text-white' :
+                            p === 2 ? 'bg-orange-600 text-white' :
+                            'bg-green-600 text-white'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      P{p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
           
           <div className="flex gap-2">
             {task && onDelete && (
@@ -1181,7 +1224,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
               Annuler
             </button>
             <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
-              {task ? 'Modifier' : 'Creer'}
+              {task ? 'Modifier' : 'Ajouter'}
             </button>
           </div>
         </div>
