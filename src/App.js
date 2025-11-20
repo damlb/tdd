@@ -166,16 +166,26 @@ function AppProvider({ children }) {
   };
 
   const addProject = async (themeId, project) => {
-    const { data, error } = await supabase
-      .from('projects')
-      .insert([{ ...project, theme_id: themeId, user_id: user.id }])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setProjects([...projects, data]);
-    }
+  const projectData = {
+    name: project.name,
+    description: project.description,
+    is_quick_list: project.is_quick_list || false,
+    theme_id: themeId,
+    user_id: user.id
   };
+  
+  const { data, error } = await supabase
+    .from('projects')
+    .insert([projectData])
+    .select()
+    .single();
+
+  if (!error && data) {
+    setProjects([...projects, data]);
+  } else if (error) {
+    console.error('Erreur création projet:', error);
+  }
+};
 
   const updateTheme = async (themeId, updates) => {
     const { data, error } = await supabase
@@ -887,9 +897,13 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-            addProject(project.themeId, { name: project.name, description: project.description, is_quick_list: project.isQuickList });
-            setShowProjectForm(false);
-          }}
+  addProject(project.themeId, { 
+    name: project.name, 
+    description: project.description, 
+    is_quick_list: project.isQuickList 
+  });
+  setShowProjectForm(false);
+}}
         />
       )}
 
@@ -1034,10 +1048,18 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
   const [isQuickList, setIsQuickList] = useState(project?.is_quick_list || false);
 
   const handleSubmit = () => {
-    if (name.trim() && themeId) {
-      onSubmit({ name, description, themeId, isQuickList });
-    }
-  };
+  if (name.trim() && themeId) {
+    console.log('Envoi projet:', { name, description, themeId, isQuickList }); // DEBUG
+    onSubmit({ 
+      name: name.trim(), 
+      description: description.trim(), 
+      themeId, 
+      isQuickList: isQuickList || false 
+    });
+  } else {
+    console.log('Validation échouée:', { name, themeId }); // DEBUG
+  }
+};
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
