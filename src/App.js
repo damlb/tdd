@@ -182,6 +182,7 @@ function AppProvider({ children }) {
 
   if (!error && data) {
     setProjects([...projects, data]);
+    loadData();
   } else if (error) {
     console.error('Erreur création projet:', error);
   }
