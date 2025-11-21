@@ -614,9 +614,7 @@ function Projects() {
   const activeTasks = tasks.filter(t => !t.completed);
   const archivedTasks = tasks.filter(t => t.completed);
   
-  let filteredProjects = filterTheme === 'all' 
-    ? projects 
-    : projects.filter(p => p.theme_id === filterTheme);
+  let filteredProjects = projects;
   
   if (searchText.trim()) {
     filteredProjects = filteredProjects.filter(p => 
