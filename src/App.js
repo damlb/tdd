@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from './supabaseClient';
-import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut } from 'lucide-react';
+import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut, AlertCircle } from 'lucide-react';
 
 const AppContext = createContext();
 const useApp = () => useContext(AppContext);
@@ -95,6 +94,28 @@ function Auth() {
   );
 }
 
+function ErrorPopup({ message, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+        <div className="flex items-start gap-3 mb-4">
+          <AlertCircle className="text-red-500 flex-shrink-0" size={24} />
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 mb-1">Erreur</h3>
+            <p className="text-sm text-gray-600">{message}</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AppProvider({ children }) {
   const [user, setUser] = useState(null);
   const [themes, setThemes] = useState([]);
@@ -134,7 +155,7 @@ function AppProvider({ children }) {
       const { data: projectsData } = await supabase
         .from('projects')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('priority', { ascending: true });
 
       const { data: tasksData } = await supabase
         .from('tasks')
@@ -196,7 +217,7 @@ function AppProvider({ children }) {
   const addProject = async (themeId, project) => {
     const { data, error } = await supabase
       .from('projects')
-      .insert([{ ...project, theme_id: themeId, user_id: user.id }])
+      .insert([{ ...project, theme_id: themeId, user_id: user.id, priority: project.priority || 2 }])
       .select()
       .single();
 
@@ -473,14 +494,201 @@ function MobileMenu() {
   );
 }
 
+function TaskFormModalWithTheme({ themes, projects, onClose }) {
+  const { addTask } = useApp();
+  const [step, setStep] = useState(1);
+  const [selectedTheme, setSelectedTheme] = useState('');
+  const [selectedProject, setSelectedProject] = useState('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [priority, setPriority] = useState(2);
+  const [error, setError] = useState('');
+
+  const filteredProjects = selectedTheme 
+    ? projects.filter(p => p.theme_id === selectedTheme)
+    : [];
+
+  const handleNext = () => {
+    if (step === 1 && !selectedTheme) {
+      setError('Veuillez sélectionner un thème');
+      return;
+    }
+    if (step === 2 && !selectedProject) {
+      setError('Veuillez sélectionner un projet');
+      return;
+    }
+    setError('');
+    setStep(step + 1);
+  };
+
+  const handleSubmit = () => {
+    if (!title.trim()) {
+      setError('Le titre est obligatoire');
+      return;
+    }
+    if (!priority) {
+      setError('Veuillez sélectionner une priorité');
+      return;
+    }
+    
+    addTask(selectedProject, { title, description, deadline: deadline || null, priority, completed: false });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
+      <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">Nouvelle Tache - Étape {step}/3</h2>
+          <button onClick={onClose} className="p-2">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-4">
+          {step === 1 && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Sélectionner un thème</label>
+              <div className="space-y-2">
+                {themes.map(theme => (
+                  <button
+                    key={theme.id}
+                    onClick={() => setSelectedTheme(theme.id)}
+                    className={`w-full flex items-center gap-3 p-3 border rounded-lg ${
+                      selectedTheme === theme.id ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                    }`}
+                  >
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: theme.color }} />
+                    <span className="font-medium">{theme.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Sélectionner un projet</label>
+              <div className="space-y-2">
+                {filteredProjects.map(project => (
+                  <button
+                    key={project.id}
+                    onClick={() => setSelectedProject(project.id)}
+                    className={`w-full flex items-center justify-between p-3 border rounded-lg ${
+                      selectedProject === project.id ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+                    }`}
+                  >
+                    <span className="font-medium">{project.name}</span>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      project.priority === 1 ? 'bg-red-100 text-red-700' :
+                      project.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      P{project.priority}
+                    </span>
+                  </button>
+                ))}
+                {filteredProjects.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">Aucun projet dans ce thème</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Titre *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: Finaliser les maquettes"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                  placeholder="Details..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Priorité *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      className={`py-3 rounded-lg font-medium ${
+                        priority === p
+                          ? p === 1 ? 'bg-red-600 text-white' :
+                            p === 2 ? 'bg-orange-600 text-white' :
+                            'bg-green-600 text-white'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      P{p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex gap-2 mt-6">
+            {step > 1 && (
+              <button
+                onClick={() => setStep(step - 1)}
+                className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium"
+              >
+                Retour
+              </button>
+            )}
+            <button
+              onClick={step === 3 ? handleSubmit : handleNext}
+              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium"
+            >
+              {step === 3 ? 'Créer' : 'Suivant'}
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {error && <ErrorPopup message={error} onClose={() => setError('')} />}
+    </div>
+  );
+}
+
 function Dashboard() {
-  const { getUrgentTasks, toggleTask, themes, projects, setView } = useApp();
+  const { getUrgentTasks, toggleTask, themes, projects } = useApp();
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [showOverdue, setShowOverdue] = useState(true);
+  const [showToday, setShowToday] = useState(true);
+  
   const urgentTasks = getUrgentTasks();
   const today = new Date().toISOString().split('T')[0];
 
-  const totalProjects = projects.length;
-  const overdueTasks = urgentTasks.filter(t => t.deadline < today).length;
-  const todayTasks = urgentTasks.filter(t => t.deadline === today).length;
+  const overdueTasks = urgentTasks.filter(t => t.deadline < today);
+  const todayTasks = urgentTasks.filter(t => t.deadline === today);
 
   return (
     <div className="p-4 pb-24">
@@ -489,130 +697,207 @@ function Dashboard() {
         <p className="text-gray-600">Vos taches urgentes</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 lg:gap-3 mb-6">
-        <button
-          onClick={() => {
-            setView('projects');
-            // On utilisera un événement custom pour communiquer le filtre
-            window.dispatchEvent(new CustomEvent('applyFilter', { detail: { filterDeadline: 'overdue' } }));
-          }}
-          className="bg-red-50 border border-red-200 rounded-lg p-2 lg:p-4 hover:bg-red-100 transition-colors text-left"
-        >
+      <div className="grid grid-cols-2 gap-2 lg:gap-3 mb-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-2 lg:p-4">
           <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
             <div className="text-center lg:text-left w-full">
               <p className="text-xs lg:text-sm text-red-600 font-medium hidden lg:block">En retard</p>
-              <p className="text-xl lg:text-2xl font-bold text-red-700">{overdueTasks}</p>
+              <p className="text-xl lg:text-2xl font-bold text-red-700">{overdueTasks.length}</p>
               <p className="text-xs text-red-600 lg:hidden">En retard</p>
             </div>
             <Calendar className="text-red-400 hidden lg:block" size={28} />
           </div>
-        </button>
+        </div>
         
-        <button
-          onClick={() => {
-            setView('projects');
-            window.dispatchEvent(new CustomEvent('applyFilter', { detail: { filterDeadline: 'today' } }));
-          }}
-          className="bg-orange-50 border border-orange-200 rounded-lg p-2 lg:p-4 hover:bg-orange-100 transition-colors text-left"
-        >
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 lg:p-4">
           <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
             <div className="text-center lg:text-left w-full">
               <p className="text-xs lg:text-sm text-orange-600 font-medium hidden lg:block">Aujourd hui</p>
-              <p className="text-xl lg:text-2xl font-bold text-orange-700">{todayTasks}</p>
+              <p className="text-xl lg:text-2xl font-bold text-orange-700">{todayTasks.length}</p>
               <p className="text-xs text-orange-600 lg:hidden">Aujourd'hui</p>
             </div>
             <CheckCircle className="text-orange-400 hidden lg:block" size={28} />
           </div>
-        </button>
-        
-        <button
-          onClick={() => setView('projects')}
-          className="bg-blue-50 border border-blue-200 rounded-lg p-2 lg:p-4 hover:bg-blue-100 transition-colors text-left"
-        >
-          <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
-            <div className="text-center lg:text-left w-full">
-              <p className="text-xs lg:text-sm text-blue-600 font-medium hidden lg:block">Projets</p>
-              <p className="text-xl lg:text-2xl font-bold text-blue-700">{totalProjects}</p>
-              <p className="text-xs text-blue-600 lg:hidden">Projets</p>
-            </div>
-            <Home className="text-blue-400 hidden lg:block" size={28} />
-          </div>
-        </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold">Taches a faire</h2>
-        </div>
-        
-        <div className="divide-y">
-          {urgentTasks.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <CheckCircle className="mx-auto mb-3 text-green-400" size={48} />
-              <p className="font-medium">Aucune tache urgente</p>
-              <p className="text-sm">Vous etes a jour</p>
+      <button
+        onClick={() => setShowTaskForm(true)}
+        className="lg:hidden fixed bottom-20 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-30"
+      >
+        <Plus size={24} />
+      </button>
+
+      <button
+        onClick={() => setShowTaskForm(true)}
+        className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mb-6"
+      >
+        <Plus size={20} />
+        Nouvelle Tache
+      </button>
+
+      <div className="space-y-4">
+        <div className="bg-white rounded-lg shadow-sm border">
+          <button
+            onClick={() => setShowOverdue(!showOverdue)}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              {showOverdue ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+              <h2 className="text-lg font-semibold text-red-600">En retard ({overdueTasks.length})</h2>
             </div>
-          ) : (
-            urgentTasks.map(task => {
-              const isOverdue = task.deadline < today;
-              
-              return (
-                <div key={task.id} className="p-4">
-                  <div className="flex items-start gap-3">
-                    <button onClick={() => toggleTask(task.id)} className="mt-1">
-                      {task.completed ? (
-                        <CheckCircle className="text-green-500" size={20} />
-                      ) : (
-                        <Circle className="text-gray-400" size={20} />
-                      )}
-                    </button>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                          {task.title}
-                        </h3>
-                        <span
-                          className="px-2 py-0.5 rounded text-xs font-medium"
-                          style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
-                        >
-                          {task.themeName}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          task.priority === 1 ? 'bg-red-100 text-red-700' :
-                          task.priority === 2 ? 'bg-orange-100 text-orange-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                          P{task.priority}
-                        </span>
-                      </div>
+          </button>
+          
+          {showOverdue && (
+            <div className="border-t divide-y">
+              {overdueTasks.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <CheckCircle className="mx-auto mb-3 text-green-400" size={48} />
+                  <p className="font-medium">Aucune tache en retard</p>
+                  <p className="text-sm">Excellent travail !</p>
+                </div>
+              ) : (
+                overdueTasks.map(task => (
+                  <div key={task.id} className="p-4">
+                    <div className="flex items-start gap-3">
+                      <button onClick={() => toggleTask(task.id)} className="mt-1">
+                        {task.completed ? (
+                          <CheckCircle className="text-green-500" size={20} />
+                        ) : (
+                          <Circle className="text-gray-400" size={20} />
+                        )}
+                      </button>
                       
-                      <p className="text-sm text-gray-600 mb-2">{task.projectName}</p>
-                      
-                      {task.description && (
-                        <p className="text-sm text-gray-500 mb-2">{task.description}</p>
-                      )}
-                      
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                          <Calendar size={14} />
-                          {isOverdue ? 'En retard' : 'Aujourd hui'} - {task.deadline}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                            {task.projectName && (
+                              <span className="text-gray-600">{task.projectName} → </span>
+                            )}
+                            {task.title}
+                          </h3>
+                          <span
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
+                          >
+                            {task.themeName}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            task.priority === 1 ? 'bg-red-100 text-red-700' :
+                            task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            P{task.priority}
+                          </span>
+                        </div>
+                        
+                        {task.description && (
+                          <p className="text-sm text-gray-500 mb-2">{task.description}</p>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="flex items-center gap-1 text-red-600 font-medium">
+                            <Calendar size={14} />
+                            {task.deadline}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border">
+          <button
+            onClick={() => setShowToday(!showToday)}
+            className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+          >
+            <div className="flex items-center gap-3">
+              {showToday ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+              <h2 className="text-lg font-semibold text-orange-600">Aujourd'hui ({todayTasks.length})</h2>
+            </div>
+          </button>
+          
+          {showToday && (
+            <div className="border-t divide-y">
+              {todayTasks.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Calendar className="mx-auto mb-3 text-gray-400" size={48} />
+                  <p className="font-medium">Aucune tache pour aujourd'hui</p>
+                  <p className="text-sm">Profitez de votre journee !</p>
                 </div>
-              );
-            })
+              ) : (
+                todayTasks.map(task => (
+                  <div key={task.id} className="p-4">
+                    <div className="flex items-start gap-3">
+                      <button onClick={() => toggleTask(task.id)} className="mt-1">
+                        {task.completed ? (
+                          <CheckCircle className="text-green-500" size={20} />
+                        ) : (
+                          <Circle className="text-gray-400" size={20} />
+                        )}
+                      </button>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                            {task.projectName && (
+                              <span className="text-gray-600">{task.projectName} → </span>
+                            )}
+                            {task.title}
+                          </h3>
+                          <span
+                            className="px-2 py-0.5 rounded text-xs font-medium"
+                            style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
+                          >
+                            {task.themeName}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            task.priority === 1 ? 'bg-red-100 text-red-700' :
+                            task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            P{task.priority}
+                          </span>
+                        </div>
+                        
+                        {task.description && (
+                          <p className="text-sm text-gray-500 mb-2">{task.description}</p>
+                        )}
+                        
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="flex items-center gap-1 text-gray-500">
+                            <Calendar size={14} />
+                            {task.deadline}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
       </div>
+
+      {showTaskForm && (
+        <TaskFormModalWithTheme
+          themes={themes}
+          projects={projects}
+          onClose={() => setShowTaskForm(false)}
+        />
+      )}
     </div>
   );
 }
 
 function Projects() {
   const { themes, projects, tasks, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask } = useApp();
+  const [expandedPriorities, setExpandedPriorities] = useState({ 1: true, 2: false, 3: false });
   const [expandedProjects, setExpandedProjects] = useState({});
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -620,52 +905,21 @@ function Projects() {
   const [editingTask, setEditingTask] = useState(null);
   const [activeProject, setActiveProject] = useState(null);
   const [filterTheme, setFilterTheme] = useState('all');
-  const [filterPriority, setFilterPriority] = useState('all');
+  const [filterTaskPriority, setFilterTaskPriority] = useState('all');
   const [filterStatus, setFilterStatus] = useState('active');
-  const [filterDeadline, setFilterDeadline] = useState('all'); // NOUVEAU: filtre deadline
   const [sortBy, setSortBy] = useState('name');
   const [searchText, setSearchText] = useState('');
-  const [showFilters, setShowFilters] = useState(false); // NOUVEAU: toggle filtres
+  const [showFilters, setShowFilters] = useState(false);
   
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Synchroniser filterTheme avec activeTheme de la sidebar
   useEffect(() => {
     if (activeTheme) {
       setFilterTheme(activeTheme);
     }
   }, [activeTheme]);
   
-  // Écouter les événements de filtre du Dashboard
-  useEffect(() => {
-    const handleApplyFilter = (event) => {
-      const { filterDeadline } = event.detail;
-      if (filterDeadline) {
-        setFilterDeadline(filterDeadline);
-        setFilterStatus('active'); // Montrer les tâches actives
-      }
-    };
-    
-    window.addEventListener('applyFilter', handleApplyFilter);
-    return () => window.removeEventListener('applyFilter', handleApplyFilter);
-  }, []);
-  
-  // Filtrer les tâches selon tous les critères
   const filteredTasks = tasks.filter(t => {
-    // Filtre statut (actif/terminé)
     if (filterStatus === 'active' && t.completed) return false;
     if (filterStatus === 'completed' && !t.completed) return false;
-    
-    // Filtre deadline
-    if (filterDeadline === 'overdue' && (!t.deadline || t.deadline >= today || t.completed)) return false;
-    if (filterDeadline === 'today' && t.deadline !== today) return false;
-    
-    // Filtre thème
-    if (filterTheme !== 'all') {
-      const taskProject = projects.find(p => p.id === t.project_id);
-      if (!taskProject || taskProject.theme_id !== filterTheme) return false;
-    }
-    
     return true;
   });
   
@@ -674,7 +928,6 @@ function Projects() {
   
   let filteredProjects = projects;
   
-  // Filtrer par thème
   if (filterTheme !== 'all') {
     filteredProjects = filteredProjects.filter(p => p.theme_id === filterTheme);
   }
@@ -696,13 +949,23 @@ function Projects() {
     return 0;
   });
   
+  const projectsByPriority = {
+    1: filteredProjects.filter(p => p.priority === 1),
+    2: filteredProjects.filter(p => p.priority === 2),
+    3: filteredProjects.filter(p => p.priority === 3)
+  };
+  
+  const togglePriority = (priority) => {
+    setExpandedPriorities(prev => ({ ...prev, [priority]: !prev[priority] }));
+  };
+  
   const toggleProject = (projectId) => {
     setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
   };
 
   const filterTasksByPriority = (tasksList) => {
-    if (filterPriority === 'all') return tasksList;
-    return tasksList.filter(t => t.priority === parseInt(filterPriority));
+    if (filterTaskPriority === 'all') return tasksList;
+    return tasksList.filter(t => t.priority === parseInt(filterTaskPriority));
   };
 
   return (
@@ -713,20 +976,20 @@ function Projects() {
             <h1 className="text-2xl lg:text-3xl font-bold mb-2">Projets</h1>
             <div className="flex gap-4 text-sm">
               <button
-                onClick={() => { setFilterStatus('active'); setFilterDeadline('all'); }}
-                className={`pb-1 ${filterStatus === 'active' && filterDeadline === 'all' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+                onClick={() => setFilterStatus('active')}
+                className={`pb-1 ${filterStatus === 'active' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
               >
                 Actives ({activeTasks.length})
               </button>
               <button
-                onClick={() => { setFilterStatus('completed'); setFilterDeadline('all'); }}
+                onClick={() => setFilterStatus('completed')}
                 className={`pb-1 ${filterStatus === 'completed' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
               >
                 Terminees ({completedTasks.length})
               </button>
               <button
-                onClick={() => { setFilterStatus('all'); setFilterDeadline('all'); }}
-                className={`pb-1 ${filterStatus === 'all' && filterDeadline === 'all' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+                onClick={() => setFilterStatus('all')}
+                className={`pb-1 ${filterStatus === 'all' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
               >
                 Toutes ({tasks.length})
               </button>
@@ -765,7 +1028,7 @@ function Projects() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
                 <select
@@ -784,23 +1047,10 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Deadline</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des tâches</label>
                 <select
-                  value={filterDeadline}
-                  onChange={(e) => setFilterDeadline(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="all">Toutes</option>
-                  <option value="overdue">En retard</option>
-                  <option value="today">Aujourd'hui</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Priorite</label>
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
+                  value={filterTaskPriority}
+                  onChange={(e) => setFilterTaskPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="all">Toutes les priorites</option>
@@ -834,127 +1084,144 @@ function Projects() {
       </button>
 
       <div className="space-y-3">
-        {filteredProjects.map(project => {
-          // Filtrer les tâches selon le statut sélectionné
-          let projectTasks = filteredTasks.filter(t => t.project_id === project.id);
-          projectTasks = filterTasksByPriority(projectTasks);
-          
-          const projectTheme = themes.find(t => t.id === project.theme_id);
-          
-          return (
-            <div key={project.id} className="bg-white rounded-lg shadow-sm border">
-              <div className="p-4 flex items-center justify-between hover:bg-gray-50 group">
-                <div 
-                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                  onClick={() => toggleProject(project.id)}
-                >
-                  {expandedProjects[project.id] ? 
-                    <ChevronDown size={20} className="flex-shrink-0" /> : 
-                    <ChevronRight size={20} className="flex-shrink-0" />
-                  }
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-sm sm:text-base truncate">{project.name}</h3>
-                      {projectTheme && (
-                        <span
-                          className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex items-center gap-1"
-                          style={{ backgroundColor: projectTheme.color + '20', color: projectTheme.color }}
-                        >
-                          <div 
-                            className="w-2 h-2 rounded-full" 
-                            style={{ backgroundColor: projectTheme.color }}
-                          />
-                          {projectTheme.name}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">{project.description}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-gray-600 flex-shrink-0">
-                    {projectTasks.length} tache{projectTasks.length > 1 ? 's' : ''}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingProject(project);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded transition-opacity"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                </div>
+        {[1, 2, 3].map(priority => (
+          <div key={priority} className="bg-white rounded-lg shadow-sm border">
+            <button
+              onClick={() => togglePriority(priority)}
+              className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+            >
+              <div className="flex items-center gap-3">
+                {expandedPriorities[priority] ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                <h2 className={`text-lg font-semibold ${
+                  priority === 1 ? 'text-red-600' :
+                  priority === 2 ? 'text-orange-600' :
+                  'text-green-600'
+                }`}>
+                  Priorité {priority} - {priority === 1 ? 'Haute' : priority === 2 ? 'Moyenne' : 'Basse'} ({projectsByPriority[priority].length})
+                </h2>
               </div>
+            </button>
 
-              {expandedProjects[project.id] && (
-                <div className="border-t p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-sm">
-                      {filterStatus === 'completed' ? 'Taches terminees' : 
-                       filterStatus === 'active' ? 'Taches actives' : 'Toutes les taches'}
-                    </h4>
-                    {filterStatus !== 'completed' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveProject(project.id);
-                          setShowTaskForm(true);
-                        }}
-                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                      >
-                        <Plus size={16} />
-                        Ajouter
-                      </button>
-                    )}
+            {expandedPriorities[priority] && (
+              <div className="border-t">
+                {projectsByPriority[priority].length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    <p className="text-sm">Aucun projet de priorité {priority}</p>
                   </div>
+                ) : (
+                  <div className="divide-y">
+                    {projectsByPriority[priority].map(project => {
+                      let projectTasks = filteredTasks.filter(t => t.project_id === project.id);
+                      projectTasks = filterTasksByPriority(projectTasks);
+                      
+                      const projectTheme = themes.find(t => t.id === project.theme_id);
+                      
+                      return (
+                        <div key={project.id} className="p-4">
+                          <div className="flex items-center justify-between group">
+                            <div 
+                              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                              onClick={() => toggleProject(project.id)}
+                            >
+                              {expandedProjects[project.id] ? 
+                                <ChevronDown size={18} className="flex-shrink-0" /> : 
+                                <ChevronRight size={18} className="flex-shrink-0" />
+                              }
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-semibold text-sm truncate">{project.name}</h3>
+                                  {projectTheme && (
+                                    <span
+                                      className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex items-center gap-1"
+                                      style={{ backgroundColor: projectTheme.color + '20', color: projectTheme.color }}
+                                    >
+                                      <div 
+                                        className="w-2 h-2 rounded-full" 
+                                        style={{ backgroundColor: projectTheme.color }}
+                                      />
+                                      {projectTheme.name}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 truncate">{project.description}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-gray-600 flex-shrink-0">
+                                {projectTasks.length} tache{projectTasks.length > 1 ? 's' : ''}
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingProject(project);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded transition-opacity"
+                              >
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
 
-                  <div className="space-y-2">
-                    {projectTasks
-                      .sort((a, b) => a.priority - b.priority)
-                      .map(task => (
-                        <TaskItem 
-                          key={task.id} 
-                          task={task} 
-                          showCompleted={filterStatus === 'completed'}
-                          onDelete={() => deleteTask(task.id)}
-                          onEdit={() => setEditingTask(task)}
-                          onToggle={() => toggleTask(task.id)}
-                        />
-                      ))}
-                    
-                    {projectTasks.length === 0 && (
-                      <p className="text-sm text-gray-500 text-center py-4">
-                        {filterPriority !== 'all' 
-                          ? `Aucune tache avec cette priorite`
-                          : filterStatus === 'completed' ? 'Aucune tache terminee' : 
-                            filterStatus === 'active' ? 'Aucune tache active' : 'Aucune tache'
-                        }
-                      </p>
-                    )}
+                          {expandedProjects[project.id] && (
+                            <div className="mt-4 pl-7 border-l-2 border-gray-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-sm">
+                                  {filterStatus === 'completed' ? 'Taches terminees' : 
+                                   filterStatus === 'active' ? 'Taches actives' : 'Toutes les taches'}
+                                </h4>
+                                {filterStatus !== 'completed' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveProject(project.id);
+                                      setShowTaskForm(true);
+                                    }}
+                                    className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Plus size={16} />
+                                    Ajouter
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="space-y-2">
+                                {projectTasks
+                                  .sort((a, b) => a.priority - b.priority)
+                                  .map(task => (
+                                    <TaskItem 
+                                      key={task.id} 
+                                      task={task} 
+                                      showCompleted={filterStatus === 'completed'}
+                                      onDelete={() => deleteTask(task.id)}
+                                      onEdit={() => setEditingTask(task)}
+                                      onToggle={() => toggleTask(task.id)}
+                                    />
+                                  ))}
+                                
+                                {projectTasks.length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center py-4">
+                                    {filterTaskPriority !== 'all' 
+                                      ? `Aucune tache avec cette priorite`
+                                      : filterStatus === 'completed' ? 'Aucune tache terminee' : 
+                                        filterStatus === 'active' ? 'Aucune tache active' : 'Aucune tache'
+                                    }
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {filteredProjects.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <p className="mb-2">Aucun projet trouve</p>
-            {!searchText && (
-              <button
-                onClick={() => setShowProjectForm(true)}
-                className="text-blue-600 font-medium text-sm hover:text-blue-700"
-              >
-                Creer votre premier projet
-              </button>
+                )}
+              </div>
             )}
           </div>
-        )}
+        ))}
       </div>
 
       {showProjectForm && (
@@ -963,7 +1230,7 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-            addProject(project.themeId, { name: project.name, description: project.description });
+            addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority });
             setShowProjectForm(false);
           }}
         />
@@ -978,7 +1245,8 @@ function Projects() {
             updateProject(editingProject.id, { 
               name: project.name, 
               description: project.description,
-              theme_id: project.themeId 
+              theme_id: project.themeId,
+              priority: project.priority 
             });
             setEditingProject(null);
           }}
@@ -1025,8 +1293,6 @@ function Projects() {
 }
 
 function TaskItem({ task, showCompleted, onDelete, onEdit, onToggle }) {
-  const { toggleTask } = useApp();
-  
   return (
     <div className="bg-white p-3 rounded border group hover:bg-gray-50">
       <div className="flex items-start gap-2">
@@ -1091,82 +1357,121 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [themeId, setThemeId] = useState(project?.theme_id || defaultTheme || themes[0]?.id || '');
+  const [priority, setPriority] = useState(project?.priority || 2);
+  const [error, setError] = useState('');
 
   const handleSubmit = () => {
-    if (name.trim() && themeId) {
-      onSubmit({ name, description, themeId });
+    if (!name.trim()) {
+      setError('Le nom du projet est obligatoire');
+      return;
     }
+    if (!themeId) {
+      setError('Veuillez sélectionner un thème');
+      return;
+    }
+    if (!priority) {
+      setError('Veuillez sélectionner une priorité');
+      return;
+    }
+    
+    onSubmit({ name, description, themeId, priority });
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
-      <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{project ? 'Modifier le Projet' : 'Nouveau Projet'}</h2>
-          <button onClick={onClose} className="p-2">
-            <X size={24} />
-          </button>
-        </div>
-        
-        <div className="p-4">
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Theme</label>
-            <select
-              value={themeId}
-              onChange={(e) => setThemeId(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Choisir un theme</option>
-              {themes.map(theme => (
-                <option key={theme.id} value={theme.id}>
-                  {theme.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Nom du projet</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Site Web Client A"
-            />
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
+        <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+            <h2 className="text-lg font-bold">{project ? 'Modifier le Projet' : 'Nouveau Projet'}</h2>
+            <button onClick={onClose} className="p-2">
+              <X size={24} />
+            </button>
           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows="3"
-              placeholder="Decrivez votre projet..."
-            />
-          </div>
-          
-          <div className="flex gap-2">
-            {project && onDelete && (
-              <button
-                onClick={onDelete}
-                className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+          <div className="p-4">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Theme *</label>
+              <select
+                value={themeId}
+                onChange={(e) => setThemeId(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
               >
-                Supprimer
+                <option value="">Choisir un theme</option>
+                {themes.map(theme => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Nom du projet *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ex: Site Web Client A"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows="3"
+                placeholder="Decrivez votre projet..."
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Priorité *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={`py-3 rounded-lg font-medium ${
+                      priority === p
+                        ? p === 1 ? 'bg-red-600 text-white' :
+                          p === 2 ? 'bg-orange-600 text-white' :
+                          'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    P{p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              {project && onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+                >
+                  Supprimer
+                </button>
+              )}
+              <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
+                Annuler
               </button>
-            )}
-            <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
-              Annuler
-            </button>
-            <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
-              {project ? 'Modifier' : 'Creer'}
-            </button>
+              <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
+                {project ? 'Modifier' : 'Creer'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      
+      {error && <ErrorPopup message={error} onClose={() => setError('')} />}
+    </>
   );
 }
 
@@ -1175,97 +1480,109 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
   const [description, setDescription] = useState(task?.description || '');
   const [deadline, setDeadline] = useState(task?.deadline || '');
   const [priority, setPriority] = useState(task?.priority || 2);
+  const [error, setError] = useState('');
 
   const handleSubmit = () => {
-    if (title.trim()) {
-      onSubmit({ title, description, deadline: deadline || null, priority, completed: false });
+    if (!title.trim()) {
+      setError('Le titre est obligatoire');
+      return;
     }
+    if (!priority) {
+      setError('Veuillez sélectionner une priorité');
+      return;
+    }
+    
+    onSubmit({ title, description, deadline: deadline || null, priority, completed: false });
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
-      <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{task ? 'Modifier la Tache' : 'Nouvelle Tache'}</h2>
-          <button onClick={onClose} className="p-2">
-            <X size={24} />
-          </button>
-        </div>
-        
-        <div className="p-4">
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Titre</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Finaliser les maquettes"
-            />
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
+        <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+            <h2 className="text-lg font-bold">{task ? 'Modifier la Tache' : 'Nouvelle Tache'}</h2>
+            <button onClick={onClose} className="p-2">
+              <X size={24} />
+            </button>
           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows="2"
-              placeholder="Details..."
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
-            <input
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Priorite</label>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPriority(p)}
-                  className={`py-3 rounded-lg font-medium ${
-                    priority === p
-                      ? p === 1 ? 'bg-red-600 text-white' :
-                        p === 2 ? 'bg-orange-600 text-white' :
-                        'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  P{p}
-                </button>
-              ))}
+          <div className="p-4">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Titre *</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Ex: Finaliser les maquettes"
+              />
             </div>
-          </div>
-          
-          <div className="flex gap-2">
-            {task && onDelete && (
-              <button
-                onClick={onDelete}
-                className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
-              >
-                Supprimer
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows="2"
+                placeholder="Details..."
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Date limite (optionnelle)</label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Priorité *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={`py-3 rounded-lg font-medium ${
+                      priority === p
+                        ? p === 1 ? 'bg-red-600 text-white' :
+                          p === 2 ? 'bg-orange-600 text-white' :
+                          'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    P{p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              {task && onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="px-4 py-3 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100"
+                >
+                  Supprimer
+                </button>
+              )}
+              <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
+                Annuler
               </button>
-            )}
-            <button onClick={onClose} className="flex-1 px-4 py-3 bg-gray-100 rounded-lg font-medium">
-              Annuler
-            </button>
-            <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
-              {task ? 'Modifier' : 'Creer'}
-            </button>
+              <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium">
+                {task ? 'Modifier' : 'Creer'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      
+      {error && <ErrorPopup message={error} onClose={() => setError('')} />}
+    </>
   );
 }
 
