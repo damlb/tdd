@@ -166,7 +166,7 @@ function AppProvider({ children }) {
       const { data: checklistData } = await supabase
         .from('checklist_items')
         .select('*')
-        .order('position', { ascending: true }); 
+        .order('position', { ascending: true });
 
       setThemes(themesData || []);
       setProjects(projectsData || []);
@@ -1323,6 +1323,14 @@ function Projects() {
 
                           {expandedProjects[project.id] && (
                             <div className="mt-4 pl-7 border-l-2 border-gray-200">
+                              <ChecklistSection 
+                                project={project}
+                                checklistItems={checklistItems}
+                                addChecklistItem={addChecklistItem}
+                                toggleChecklistItem={toggleChecklistItem}
+                                reorderChecklistItems={reorderChecklistItems}
+                              />
+
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-medium text-sm">
                                   {filterStatus === 'completed' ? 'Taches terminees' : 
@@ -1393,7 +1401,7 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-           addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority, is_checklist: project.is_checklist });
+            addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority });
             setShowProjectForm(false);
           }}
         />
@@ -1405,13 +1413,12 @@ function Projects() {
           project={editingProject}
           onClose={() => setEditingProject(null)}
           onSubmit={(project) => {
-  updateProject(editingProject.id, {
-    name: project.name,
-    description: project.description,
-    theme_id: project.themeId,
-    priority: project.priority,
-    is_checklist: project.is_checklist  // <-- AJOUTE CETTE LIGNE
-  });
+            updateProject(editingProject.id, { 
+              name: project.name, 
+              description: project.description,
+              theme_id: project.themeId,
+              priority: project.priority 
+            });
             setEditingProject(null);
           }}
           onDelete={() => {
@@ -1750,9 +1757,9 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
                   onChange={(e) => setIsChecklist(e.target.checked)}
                   className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="text-sm font-medium text-gray-700">Liste de courses</span>
+                <span className="text-sm font-medium text-gray-700">Ajouter liste cochable</span>
               </label>
-              <p className="text-xs text-gray-500 mt-1 ml-8">Créer une liste d'éléments cochables</p>
+              <p className="text-xs text-gray-500 mt-1 ml-8">Créer une liste de courses par exemple</p>
             </div>
             
             <div className="flex gap-2">
