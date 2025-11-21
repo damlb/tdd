@@ -740,12 +740,8 @@ function Projects() {
           const projectTheme = themes.find(t => t.id === project.theme_id);
           
           const hasAnyTasks = showArchived 
-            ? archivedTasks.filter(t => t.project_id === project.id).length > 0
-            : activeTasks.filter(t => t.project_id === project.id).length > 0;
-            
-          if (!hasAnyTasks && projectTasks.length === 0) {
-            return null;
-          }
+  ? archivedTasks.filter(t => t.project_id === project.id).length > 0
+  : activeTasks.filter(t => t.project_id === project.id).length > 0;
           
           return (
             <div key={project.id} className="bg-white rounded-lg shadow-sm border">
