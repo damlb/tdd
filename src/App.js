@@ -603,13 +603,7 @@ function Projects() {
   const [filterPriority, setFilterPriority] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [searchText, setSearchText] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  
-  React.useEffect(() => {
-    if (activeTheme) {
-      setFilterTheme(activeTheme);
-    }
-  }, [activeTheme]);
+  const [showArchived, setShowArchived] = useState(false)
   
   const activeTasks = tasks.filter(t => !t.completed);
   const archivedTasks = tasks.filter(t => t.completed);
