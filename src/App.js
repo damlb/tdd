@@ -121,6 +121,7 @@ function AppProvider({ children }) {
   const [themes, setThemes] = useState([]);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [checklistItems, setChecklistItems] = useState([]);
   const [activeTheme, setActiveTheme] = useState(null);
   const [view, setView] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -162,9 +163,15 @@ function AppProvider({ children }) {
         .select('*')
         .order('created_at', { ascending: true });
 
+      const { data: checklistData } = await supabase
+        .from('checklist_items')
+        .select('*')
+        .order('position', { ascending: true });
+
       setThemes(themesData || []);
       setProjects(projectsData || []);
       setTasks(tasksData || []);
+      setChecklistItems(checklistData || []);
 
       if (themesData && themesData.length > 0 && !activeTheme) {
         setActiveTheme(themesData[0].id);
@@ -217,7 +224,7 @@ function AppProvider({ children }) {
   const addProject = async (themeId, project) => {
     const { data, error } = await supabase
       .from('projects')
-      .insert([{ ...project, theme_id: themeId, user_id: user.id, priority: project.priority || 2 }])
+      .insert([{ ...project, theme_id: themeId, user_id: user.id, priority: project.priority || 2, is_checklist: project.is_checklist || false }])
       .select()
       .single();
 
@@ -309,6 +316,60 @@ function AppProvider({ children }) {
     }
   };
 
+  const addChecklistItem = async (projectId, text) => {
+    const maxPosition = checklistItems
+      .filter(item => item.project_id === projectId)
+      .reduce((max, item) => Math.max(max, item.position || 0), 0);
+
+    const { data, error } = await supabase
+      .from('checklist_items')
+      .insert([{ 
+        project_id: projectId, 
+        user_id: user.id, 
+        text,
+        position: maxPosition + 1,
+        completed: false 
+      }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setChecklistItems([...checklistItems, data]);
+    }
+  };
+
+  const toggleChecklistItem = async (itemId) => {
+    const { error } = await supabase
+      .from('checklist_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (!error) {
+      setChecklistItems(checklistItems.filter(item => item.id !== itemId));
+    }
+  };
+
+  const reorderChecklistItems = async (projectId, items) => {
+    const updates = items.map((item, index) => ({
+      id: item.id,
+      position: index
+    }));
+
+    for (const update of updates) {
+      await supabase
+        .from('checklist_items')
+        .update({ position: update.position })
+        .eq('id', update.id);
+    }
+
+    setChecklistItems(prevItems => 
+      prevItems.map(item => {
+        const update = updates.find(u => u.id === item.id);
+        return update ? { ...item, position: update.position } : item;
+      })
+    );
+  };
+
   const getUrgentTasks = () => {
     const today = new Date().toISOString().split('T')[0];
     return tasks
@@ -335,6 +396,7 @@ function AppProvider({ children }) {
     setThemes([]);
     setProjects([]);
     setTasks([]);
+    setChecklistItems([]);
     setActiveTheme(null);
   };
 
@@ -343,6 +405,7 @@ function AppProvider({ children }) {
     themes,
     projects,
     tasks,
+    checklistItems,
     activeTheme,
     setActiveTheme,
     view,
@@ -359,6 +422,9 @@ function AppProvider({ children }) {
     updateTask,
     toggleTask,
     deleteTask,
+    addChecklistItem,
+    toggleChecklistItem,
+    reorderChecklistItems,
     getUrgentTasks,
     signOut
   };
@@ -1448,6 +1514,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
   const [description, setDescription] = useState(project?.description || '');
   const [themeId, setThemeId] = useState(project?.theme_id || defaultTheme || themes[0]?.id || '');
   const [priority, setPriority] = useState(project?.priority || 2);
+  const [isChecklist, setIsChecklist] = useState(project?.is_checklist || false);
   const [error, setError] = useState('');
 
   const handleSubmit = () => {
@@ -1464,7 +1531,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
       return;
     }
     
-    onSubmit({ name, description, themeId, priority });
+    onSubmit({ name, description, themeId, priority, is_checklist: isChecklist });
   };
 
   return (
@@ -1538,6 +1605,19 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isChecklist}
+                  onChange={(e) => setIsChecklist(e.target.checked)}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Liste de courses</span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 ml-8">Créer une liste d'éléments cochables</p>
             </div>
             
             <div className="flex gap-2">
