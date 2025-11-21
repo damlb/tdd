@@ -166,7 +166,7 @@ function AppProvider({ children }) {
       const { data: checklistData } = await supabase
         .from('checklist_items')
         .select('*')
-        .order('position', { ascending: true });
+        .order('position', { ascending: true }); 
 
       setThemes(themesData || []);
       setProjects(projectsData || []);
@@ -1052,7 +1052,7 @@ function TaskItemDashboard({ task, toggleTask }) {
 }
 
 function Projects() {
-  const { themes, projects, tasks, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask } = useApp();
+  const { themes, projects, tasks, checklistItems, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask, addChecklistItem, toggleChecklistItem, reorderChecklistItems } = useApp();
   const [expandedPriorities, setExpandedPriorities] = useState({ 1: true, 2: false, 3: false });
   const [expandedProjects, setExpandedProjects] = useState({});
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -1367,6 +1367,13 @@ function Projects() {
                                   </p>
                                 )}
                               </div>
+                              <ChecklistSection 
+  project={project}
+  checklistItems={checklistItems}
+  addChecklistItem={addChecklistItem}
+  toggleChecklistItem={toggleChecklistItem}
+  reorderChecklistItems={reorderChecklistItems}
+/>
                             </div>
                           )}
                         </div>
@@ -1386,7 +1393,7 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-            addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority });
+           addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority, is_checklist: project.is_checklist });
             setShowProjectForm(false);
           }}
         />
@@ -1398,12 +1405,13 @@ function Projects() {
           project={editingProject}
           onClose={() => setEditingProject(null)}
           onSubmit={(project) => {
-            updateProject(editingProject.id, { 
-              name: project.name, 
-              description: project.description,
-              theme_id: project.themeId,
-              priority: project.priority 
-            });
+  updateProject(editingProject.id, {
+    name: project.name,
+    description: project.description,
+    theme_id: project.themeId,
+    priority: project.priority,
+    is_checklist: project.is_checklist  // <-- AJOUTE CETTE LIGNE
+  });
             setEditingProject(null);
           }}
           onDelete={() => {
@@ -1504,6 +1512,133 @@ function TaskItem({ task, showCompleted, onDelete, onEdit, onToggle }) {
             <X size={16} />
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChecklistItem, reorderChecklistItems }) {
+  const [newItemText, setNewItemText] = useState('');
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [draggedOverItem, setDraggedOverItem] = useState(null);
+
+  const projectItems = checklistItems
+    .filter(item => item.project_id === project.id)
+    .sort((a, b) => (a.position || 0) - (b.position || 0));
+
+  const handleAddItem = () => {
+    if (newItemText.trim()) {
+      addChecklistItem(project.id, newItemText.trim());
+      setNewItemText('');
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleAddItem();
+    }
+  };
+
+  const handleDragStart = (e, item) => {
+    setDraggedItem(item);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.target);
+    e.target.style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+    setDraggedItem(null);
+    setDraggedOverItem(null);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragEnter = (e, item) => {
+    if (draggedItem && draggedItem.id !== item.id) {
+      setDraggedOverItem(item);
+    }
+  };
+
+  const handleDrop = (e, dropTarget) => {
+    e.preventDefault();
+    
+    if (!draggedItem || draggedItem.id === dropTarget.id) return;
+
+    const items = [...projectItems];
+    const draggedIndex = items.findIndex(item => item.id === draggedItem.id);
+    const targetIndex = items.findIndex(item => item.id === dropTarget.id);
+
+    items.splice(draggedIndex, 1);
+    items.splice(targetIndex, 0, draggedItem);
+
+    reorderChecklistItems(project.id, items);
+  };
+
+  if (!project.is_checklist) return null;
+
+  return (
+    <div className="mt-4 pt-4 border-t">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-medium text-sm">Liste de courses</h4>
+        <span className="text-xs text-gray-500">{projectItems.length} élément{projectItems.length > 1 ? 's' : ''}</span>
+      </div>
+
+      {projectItems.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {projectItems.map((item) => (
+            <div
+              key={item.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, item)}
+              onDragEnd={handleDragEnd}
+              onDragOver={handleDragOver}
+              onDragEnter={(e) => handleDragEnter(e, item)}
+              onDrop={(e) => handleDrop(e, item)}
+              className={`flex items-center gap-3 p-3 bg-white border rounded-lg cursor-move hover:bg-gray-50 transition-all ${
+                draggedOverItem?.id === item.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              }`}
+            >
+              <div className="flex items-center gap-3 flex-1">
+                <div className="text-gray-400 cursor-grab active:cursor-grabbing">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                  </svg>
+                </div>
+                
+                <button
+                  onClick={() => toggleChecklistItem(item.id)}
+                  className="flex-shrink-0"
+                >
+                  <Circle className="text-gray-400 hover:text-blue-500" size={20} />
+                </button>
+                
+                <span className="text-sm text-gray-700 flex-1">{item.text}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newItemText}
+          onChange={(e) => setNewItemText(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Ajouter un élément..."
+          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onClick={handleAddItem}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-1"
+        >
+          <Plus size={16} />
+          Ajouter
+        </button>
       </div>
     </div>
   );
