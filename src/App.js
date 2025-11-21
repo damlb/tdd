@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from './supabaseClient';
 import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut } from 'lucide-react';
@@ -473,7 +474,7 @@ function MobileMenu() {
 }
 
 function Dashboard() {
-  const { getUrgentTasks, toggleTask, themes, projects } = useApp();
+  const { getUrgentTasks, toggleTask, themes, projects, setView } = useApp();
   const urgentTasks = getUrgentTasks();
   const today = new Date().toISOString().split('T')[0];
 
@@ -488,36 +489,55 @@ function Dashboard() {
         <p className="text-gray-600">Vos taches urgentes</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-red-600 font-medium">En retard</p>
-              <p className="text-2xl font-bold text-red-700">{overdueTasks}</p>
+      <div className="grid grid-cols-3 gap-2 lg:gap-3 mb-6">
+        <button
+          onClick={() => {
+            setView('projects');
+            // On utilisera un événement custom pour communiquer le filtre
+            window.dispatchEvent(new CustomEvent('applyFilter', { detail: { filterDeadline: 'overdue' } }));
+          }}
+          className="bg-red-50 border border-red-200 rounded-lg p-2 lg:p-4 hover:bg-red-100 transition-colors text-left"
+        >
+          <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
+            <div className="text-center lg:text-left w-full">
+              <p className="text-xs lg:text-sm text-red-600 font-medium hidden lg:block">En retard</p>
+              <p className="text-xl lg:text-2xl font-bold text-red-700">{overdueTasks}</p>
+              <p className="text-xs text-red-600 lg:hidden">En retard</p>
             </div>
-            <Calendar className="text-red-400" size={28} />
+            <Calendar className="text-red-400 hidden lg:block" size={28} />
           </div>
-        </div>
+        </button>
         
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-orange-600 font-medium">Aujourd hui</p>
-              <p className="text-2xl font-bold text-orange-700">{todayTasks}</p>
+        <button
+          onClick={() => {
+            setView('projects');
+            window.dispatchEvent(new CustomEvent('applyFilter', { detail: { filterDeadline: 'today' } }));
+          }}
+          className="bg-orange-50 border border-orange-200 rounded-lg p-2 lg:p-4 hover:bg-orange-100 transition-colors text-left"
+        >
+          <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
+            <div className="text-center lg:text-left w-full">
+              <p className="text-xs lg:text-sm text-orange-600 font-medium hidden lg:block">Aujourd hui</p>
+              <p className="text-xl lg:text-2xl font-bold text-orange-700">{todayTasks}</p>
+              <p className="text-xs text-orange-600 lg:hidden">Aujourd'hui</p>
             </div>
-            <CheckCircle className="text-orange-400" size={28} />
+            <CheckCircle className="text-orange-400 hidden lg:block" size={28} />
           </div>
-        </div>
+        </button>
         
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-blue-600 font-medium">Projets</p>
-              <p className="text-2xl font-bold text-blue-700">{totalProjects}</p>
+        <button
+          onClick={() => setView('projects')}
+          className="bg-blue-50 border border-blue-200 rounded-lg p-2 lg:p-4 hover:bg-blue-100 transition-colors text-left"
+        >
+          <div className="flex flex-col lg:flex-row items-center lg:items-center justify-between">
+            <div className="text-center lg:text-left w-full">
+              <p className="text-xs lg:text-sm text-blue-600 font-medium hidden lg:block">Projets</p>
+              <p className="text-xl lg:text-2xl font-bold text-blue-700">{totalProjects}</p>
+              <p className="text-xs text-blue-600 lg:hidden">Projets</p>
             </div>
-            <Home className="text-blue-400" size={28} />
+            <Home className="text-blue-400 hidden lg:block" size={28} />
           </div>
-        </div>
+        </button>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border">
@@ -592,7 +612,7 @@ function Dashboard() {
 }
 
 function Projects() {
-  const { themes, projects, tasks, activeTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask } = useApp();
+  const { themes, projects, tasks, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask } = useApp();
   const [expandedProjects, setExpandedProjects] = useState({});
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
@@ -601,14 +621,63 @@ function Projects() {
   const [activeProject, setActiveProject] = useState(null);
   const [filterTheme, setFilterTheme] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('active');
+  const [filterDeadline, setFilterDeadline] = useState('all'); // NOUVEAU: filtre deadline
   const [sortBy, setSortBy] = useState('name');
   const [searchText, setSearchText] = useState('');
-  const [showArchived, setShowArchived] = useState(false)
+  const [showFilters, setShowFilters] = useState(false); // NOUVEAU: toggle filtres
+  
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Synchroniser filterTheme avec activeTheme de la sidebar
+  useEffect(() => {
+    if (activeTheme) {
+      setFilterTheme(activeTheme);
+    }
+  }, [activeTheme]);
+  
+  // Écouter les événements de filtre du Dashboard
+  useEffect(() => {
+    const handleApplyFilter = (event) => {
+      const { filterDeadline } = event.detail;
+      if (filterDeadline) {
+        setFilterDeadline(filterDeadline);
+        setFilterStatus('active'); // Montrer les tâches actives
+      }
+    };
+    
+    window.addEventListener('applyFilter', handleApplyFilter);
+    return () => window.removeEventListener('applyFilter', handleApplyFilter);
+  }, []);
+  
+  // Filtrer les tâches selon tous les critères
+  const filteredTasks = tasks.filter(t => {
+    // Filtre statut (actif/terminé)
+    if (filterStatus === 'active' && t.completed) return false;
+    if (filterStatus === 'completed' && !t.completed) return false;
+    
+    // Filtre deadline
+    if (filterDeadline === 'overdue' && (!t.deadline || t.deadline >= today || t.completed)) return false;
+    if (filterDeadline === 'today' && t.deadline !== today) return false;
+    
+    // Filtre thème
+    if (filterTheme !== 'all') {
+      const taskProject = projects.find(p => p.id === t.project_id);
+      if (!taskProject || taskProject.theme_id !== filterTheme) return false;
+    }
+    
+    return true;
+  });
   
   const activeTasks = tasks.filter(t => !t.completed);
-  const archivedTasks = tasks.filter(t => t.completed);
+  const completedTasks = tasks.filter(t => t.completed);
   
   let filteredProjects = projects;
+  
+  // Filtrer par thème
+  if (filterTheme !== 'all') {
+    filteredProjects = filteredProjects.filter(p => p.theme_id === filterTheme);
+  }
   
   if (searchText.trim()) {
     filteredProjects = filteredProjects.filter(p => 
@@ -644,82 +713,117 @@ function Projects() {
             <h1 className="text-2xl lg:text-3xl font-bold mb-2">Projets</h1>
             <div className="flex gap-4 text-sm">
               <button
-                onClick={() => setShowArchived(false)}
-                className={`pb-1 ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+                onClick={() => { setFilterStatus('active'); setFilterDeadline('all'); }}
+                className={`pb-1 ${filterStatus === 'active' && filterDeadline === 'all' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
               >
                 Actives ({activeTasks.length})
               </button>
               <button
-                onClick={() => setShowArchived(true)}
-                className={`pb-1 ${showArchived ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+                onClick={() => { setFilterStatus('completed'); setFilterDeadline('all'); }}
+                className={`pb-1 ${filterStatus === 'completed' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
               >
-                Archivees ({archivedTasks.length})
+                Terminees ({completedTasks.length})
+              </button>
+              <button
+                onClick={() => { setFilterStatus('all'); setFilterDeadline('all'); }}
+                className={`pb-1 ${filterStatus === 'all' && filterDeadline === 'all' ? 'text-blue-600 border-b-2 border-blue-600 font-medium' : 'text-gray-600'}`}
+              >
+                Toutes ({tasks.length})
               </button>
             </div>
           </div>
-          <button
-            onClick={() => setShowProjectForm(true)}
-            className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            <Plus size={20} />
-            Nouveau Projet
-          </button>
-        </div>
-
-        <div className="space-y-3 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Rechercher un projet</label>
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Nom du projet..."
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-              <select
-                value={filterTheme}
-                onChange={(e) => setFilterTheme(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">Tous les themes</option>
-                {themes.map(theme => (
-                  <option key={theme.id} value={theme.id}>{theme.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Priorite</label>
-              <select
-                value={filterPriority}
-                onChange={(e) => setFilterPriority(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">Toutes les priorites</option>
-                <option value="1">Priorite 1 (Haute)</option>
-                <option value="2">Priorite 2 (Moyenne)</option>
-                <option value="3">Priorite 3 (Basse)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Trier par</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="name">Nom</option>
-                <option value="theme">Theme</option>
-              </select>
-            </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filtres
+            </button>
+            <button
+              onClick={() => setShowProjectForm(true)}
+              className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={20} />
+              Nouveau Projet
+            </button>
           </div>
         </div>
+
+        {showFilters && (
+          <div className="space-y-3 mb-4 p-4 bg-gray-50 rounded-lg border">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Rechercher un projet</label>
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                placeholder="Nom du projet..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
+                <select
+                  value={filterTheme}
+                  onChange={(e) => {
+                    setFilterTheme(e.target.value);
+                    setActiveTheme(e.target.value === 'all' ? null : e.target.value);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Tous les themes</option>
+                  {themes.map(theme => (
+                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Deadline</label>
+                <select
+                  value={filterDeadline}
+                  onChange={(e) => setFilterDeadline(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Toutes</option>
+                  <option value="overdue">En retard</option>
+                  <option value="today">Aujourd'hui</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Priorite</label>
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Toutes les priorites</option>
+                  <option value="1">Priorite 1 (Haute)</option>
+                  <option value="2">Priorite 2 (Moyenne)</option>
+                  <option value="3">Priorite 3 (Basse)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Trier par</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="name">Nom</option>
+                  <option value="theme">Theme</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <button
@@ -731,17 +835,11 @@ function Projects() {
 
       <div className="space-y-3">
         {filteredProjects.map(project => {
-          let projectTasks = showArchived 
-            ? archivedTasks.filter(t => t.project_id === project.id)
-            : activeTasks.filter(t => t.project_id === project.id);
-          
+          // Filtrer les tâches selon le statut sélectionné
+          let projectTasks = filteredTasks.filter(t => t.project_id === project.id);
           projectTasks = filterTasksByPriority(projectTasks);
           
           const projectTheme = themes.find(t => t.id === project.theme_id);
-          
-          const hasAnyTasks = showArchived 
-  ? archivedTasks.filter(t => t.project_id === project.id).length > 0
-  : activeTasks.filter(t => t.project_id === project.id).length > 0;
           
           return (
             <div key={project.id} className="bg-white rounded-lg shadow-sm border">
@@ -796,9 +894,10 @@ function Projects() {
                 <div className="border-t p-4 bg-gray-50">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="font-medium text-sm">
-                      {showArchived ? 'Taches archivees' : 'Taches actives'}
+                      {filterStatus === 'completed' ? 'Taches terminees' : 
+                       filterStatus === 'active' ? 'Taches actives' : 'Toutes les taches'}
                     </h4>
-                    {!showArchived && (
+                    {filterStatus !== 'completed' && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -820,10 +919,10 @@ function Projects() {
                         <TaskItem 
                           key={task.id} 
                           task={task} 
-                          showArchived={showArchived}
+                          showCompleted={filterStatus === 'completed'}
                           onDelete={() => deleteTask(task.id)}
                           onEdit={() => setEditingTask(task)}
-                          onUnarchive={() => toggleTask(task.id)}
+                          onToggle={() => toggleTask(task.id)}
                         />
                       ))}
                     
@@ -831,7 +930,8 @@ function Projects() {
                       <p className="text-sm text-gray-500 text-center py-4">
                         {filterPriority !== 'all' 
                           ? `Aucune tache avec cette priorite`
-                          : showArchived ? 'Aucune tache archivee' : 'Aucune tache active'
+                          : filterStatus === 'completed' ? 'Aucune tache terminee' : 
+                            filterStatus === 'active' ? 'Aucune tache active' : 'Aucune tache'
                         }
                       </p>
                     )}
@@ -924,24 +1024,26 @@ function Projects() {
   );
 }
 
-function TaskItem({ task, showArchived, onDelete, onEdit, onUnarchive }) {
+function TaskItem({ task, showCompleted, onDelete, onEdit, onToggle }) {
   const { toggleTask } = useApp();
   
   return (
     <div className="bg-white p-3 rounded border group hover:bg-gray-50">
       <div className="flex items-start gap-2">
-        {!showArchived && (
-          <button onClick={() => toggleTask(task.id)} className="mt-0.5">
+        <button onClick={onToggle} className="mt-0.5">
+          {task.completed ? (
+            <CheckCircle className="text-green-500" size={18} />
+          ) : (
             <Circle className="text-gray-400" size={18} />
-          </button>
-        )}
+          )}
+        </button>
         
         <div 
           className="flex-1 min-w-0 cursor-pointer"
           onClick={onEdit}
         >
           <div className="flex flex-wrap items-center gap-2 mb-1">
-            <h4 className="font-medium text-xs">
+            <h4 className={`font-medium text-xs ${task.completed ? 'line-through text-gray-400' : ''}`}>
               {task.title}
             </h4>
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -967,29 +1069,18 @@ function TaskItem({ task, showArchived, onDelete, onEdit, onUnarchive }) {
           )}
         </div>
 
-        {showArchived && (
-          <div className="flex gap-1 flex-shrink-0">
-            <button
-              onClick={onUnarchive}
-              className="p-2 text-green-600 hover:bg-green-50 rounded"
-              title="Desarchiver"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-            </button>
-            <button
-              onClick={() => {
-                if (window.confirm('Supprimer definitivement cette tache ?')) {
-                  onDelete();
-                }
-              }}
-              className="p-2 text-red-600 hover:bg-red-50 rounded"
-              title="Supprimer"
-            >
-              <X size={16} />
-            </button>
-          </div>
+        {showCompleted && (
+          <button
+            onClick={() => {
+              if (window.confirm('Supprimer definitivement cette tache ?')) {
+                onDelete();
+              }
+            }}
+            className="p-2 text-red-600 hover:bg-red-50 rounded"
+            title="Supprimer"
+          >
+            <X size={16} />
+          </button>
         )}
       </div>
     </div>
