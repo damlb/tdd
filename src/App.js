@@ -679,16 +679,51 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
 }
 
 function Dashboard() {
-  const { getUrgentTasks, toggleTask, themes, projects } = useApp();
+  const { getUrgentTasks, toggleTask, themes, projects, tasks } = useApp();
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showOverdue, setShowOverdue] = useState(true);
-  const [showToday, setShowToday] = useState(true);
+  const [showToday, setShowToday] = useState(false);
+  const [showThisWeek, setShowThisWeek] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [filterTheme, setFilterTheme] = useState('all');
+  const [sortByDate, setSortByDate] = useState('recent');
   
   const urgentTasks = getUrgentTasks();
   const today = new Date().toISOString().split('T')[0];
+  const todayDate = new Date(today);
+  const nextWeek = new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const overdueTasks = urgentTasks.filter(t => t.deadline < today);
   const todayTasks = urgentTasks.filter(t => t.deadline === today);
+  const thisWeekTasks = urgentTasks.filter(t => t.deadline > today && t.deadline <= nextWeek);
+  
+  const allActiveTasks = tasks
+    .filter(t => !t.completed)
+    .map(task => {
+      const project = projects.find(p => p.id === task.project_id);
+      const theme = themes.find(t => t.id === project?.theme_id);
+      return {
+        ...task,
+        projectName: project?.name,
+        themeName: theme?.name,
+        themeColor: theme?.color,
+        themeId: theme?.id
+      };
+    });
+  
+  let filteredAllTasks = allActiveTasks;
+  
+  if (filterTheme !== 'all') {
+    filteredAllTasks = filteredAllTasks.filter(t => t.themeId === filterTheme);
+  }
+  
+  filteredAllTasks = [...filteredAllTasks].sort((a, b) => {
+    if (sortByDate === 'recent') {
+      return new Date(b.created_at) - new Date(a.created_at);
+    } else {
+      return new Date(a.created_at) - new Date(b.created_at);
+    }
+  });
 
   return (
     <div className="p-4 pb-24">
@@ -721,6 +756,26 @@ function Dashboard() {
         </div>
       </div>
 
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setShowTaskForm(true)}
+          className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+        >
+          <Plus size={20} />
+          Nouvelle Tache
+        </button>
+
+        <button
+          onClick={() => setShowAllTasks(!showAllTasks)}
+          className="hidden lg:flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          {showAllTasks ? 'Masquer toutes les tâches' : 'Toutes les tâches'}
+        </button>
+      </div>
+
       <button
         onClick={() => setShowTaskForm(true)}
         className="lg:hidden fixed bottom-20 right-4 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-30"
@@ -728,161 +783,141 @@ function Dashboard() {
         <Plus size={24} />
       </button>
 
-      <button
-        onClick={() => setShowTaskForm(true)}
-        className="hidden lg:flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mb-6"
-      >
-        <Plus size={20} />
-        Nouvelle Tache
-      </button>
-
-      <div className="space-y-4">
-        <div className="bg-white rounded-lg shadow-sm border">
-          <button
-            onClick={() => setShowOverdue(!showOverdue)}
-            className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
-          >
-            <div className="flex items-center gap-3">
-              {showOverdue ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h2 className="text-lg font-semibold text-red-600">En retard ({overdueTasks.length})</h2>
-            </div>
-          </button>
-          
-          {showOverdue && (
-            <div className="border-t divide-y">
-              {overdueTasks.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <CheckCircle className="mx-auto mb-3 text-green-400" size={48} />
-                  <p className="font-medium">Aucune tache en retard</p>
-                  <p className="text-sm">Excellent travail !</p>
-                </div>
-              ) : (
-                overdueTasks.map(task => (
-                  <div key={task.id} className="p-4">
-                    <div className="flex items-start gap-3">
-                      <button onClick={() => toggleTask(task.id)} className="mt-1">
-                        {task.completed ? (
-                          <CheckCircle className="text-green-500" size={20} />
-                        ) : (
-                          <Circle className="text-gray-400" size={20} />
-                        )}
-                      </button>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                            {task.projectName && (
-                              <span className="text-gray-600">{task.projectName} → </span>
-                            )}
-                            {task.title}
-                          </h3>
-                          <span
-                            className="px-2 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
-                          >
-                            {task.themeName}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            task.priority === 1 ? 'bg-red-100 text-red-700' :
-                            task.priority === 2 ? 'bg-orange-100 text-orange-700' :
-                            'bg-green-100 text-green-700'
-                          }`}>
-                            P{task.priority}
-                          </span>
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-sm text-gray-500 mb-2">{task.description}</p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="flex items-center gap-1 text-red-600 font-medium">
-                            <Calendar size={14} />
-                            {task.deadline}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+      {!showAllTasks ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg shadow-sm border">
+            <button
+              onClick={() => setShowOverdue(!showOverdue)}
+              className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+            >
+              <div className="flex items-center gap-3">
+                {showOverdue ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                <h2 className="text-lg font-semibold text-red-600">En retard ({overdueTasks.length})</h2>
+              </div>
+            </button>
+            
+            {showOverdue && (
+              <div className="border-t divide-y">
+                {overdueTasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    <CheckCircle className="mx-auto mb-3 text-green-400" size={48} />
+                    <p className="font-medium">Aucune tache en retard</p>
+                    <p className="text-sm">Excellent travail !</p>
                   </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+                ) : (
+                  overdueTasks.map(task => (
+                    <TaskItemDashboard key={task.id} task={task} toggleTask={toggleTask} />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
-        <div className="bg-white rounded-lg shadow-sm border">
-          <button
-            onClick={() => setShowToday(!showToday)}
-            className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
-          >
-            <div className="flex items-center gap-3">
-              {showToday ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h2 className="text-lg font-semibold text-orange-600">Aujourd'hui ({todayTasks.length})</h2>
-            </div>
-          </button>
-          
-          {showToday && (
-            <div className="border-t divide-y">
-              {todayTasks.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <Calendar className="mx-auto mb-3 text-gray-400" size={48} />
-                  <p className="font-medium">Aucune tache pour aujourd'hui</p>
-                  <p className="text-sm">Profitez de votre journee !</p>
-                </div>
-              ) : (
-                todayTasks.map(task => (
-                  <div key={task.id} className="p-4">
-                    <div className="flex items-start gap-3">
-                      <button onClick={() => toggleTask(task.id)} className="mt-1">
-                        {task.completed ? (
-                          <CheckCircle className="text-green-500" size={20} />
-                        ) : (
-                          <Circle className="text-gray-400" size={20} />
-                        )}
-                      </button>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
-                            {task.projectName && (
-                              <span className="text-gray-600">{task.projectName} → </span>
-                            )}
-                            {task.title}
-                          </h3>
-                          <span
-                            className="px-2 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
-                          >
-                            {task.themeName}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            task.priority === 1 ? 'bg-red-100 text-red-700' :
-                            task.priority === 2 ? 'bg-orange-100 text-orange-700' :
-                            'bg-green-100 text-green-700'
-                          }`}>
-                            P{task.priority}
-                          </span>
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-sm text-gray-500 mb-2">{task.description}</p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="flex items-center gap-1 text-gray-500">
-                            <Calendar size={14} />
-                            {task.deadline}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+          <div className="bg-white rounded-lg shadow-sm border">
+            <button
+              onClick={() => setShowToday(!showToday)}
+              className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+            >
+              <div className="flex items-center gap-3">
+                {showToday ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                <h2 className="text-lg font-semibold text-orange-600">Aujourd'hui ({todayTasks.length})</h2>
+              </div>
+            </button>
+            
+            {showToday && (
+              <div className="border-t divide-y">
+                {todayTasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    <Calendar className="mx-auto mb-3 text-gray-400" size={48} />
+                    <p className="font-medium">Aucune tache pour aujourd'hui</p>
+                    <p className="text-sm">Profitez de votre journee !</p>
                   </div>
-                ))
-              )}
-            </div>
-          )}
+                ) : (
+                  todayTasks.map(task => (
+                    <TaskItemDashboard key={task.id} task={task} toggleTask={toggleTask} />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border">
+            <button
+              onClick={() => setShowThisWeek(!showThisWeek)}
+              className="w-full p-4 flex items-center justify-between hover:bg-gray-50"
+            >
+              <div className="flex items-center gap-3">
+                {showThisWeek ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                <h2 className="text-lg font-semibold text-blue-600">Cette semaine ({thisWeekTasks.length})</h2>
+              </div>
+            </button>
+            
+            {showThisWeek && (
+              <div className="border-t divide-y">
+                {thisWeekTasks.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">
+                    <Calendar className="mx-auto mb-3 text-gray-400" size={48} />
+                    <p className="font-medium">Aucune tache pour cette semaine</p>
+                    <p className="text-sm">Tout va bien !</p>
+                  </div>
+                ) : (
+                  thisWeekTasks.map(task => (
+                    <TaskItemDashboard key={task.id} task={task} toggleTask={toggleTask} />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-4 border-b">
+            <h2 className="text-lg font-semibold mb-4">Toutes les tâches actives ({filteredAllTasks.length})</h2>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par thème</label>
+                <select
+                  value={filterTheme}
+                  onChange={(e) => setFilterTheme(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Tous les thèmes</option>
+                  {themes.map(theme => (
+                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Trier par date</label>
+                <select
+                  value={sortByDate}
+                  onChange={(e) => setSortByDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="recent">Plus récent</option>
+                  <option value="oldest">Plus ancien</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y max-h-[600px] overflow-y-auto">
+            {filteredAllTasks.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <CheckCircle className="mx-auto mb-3 text-gray-400" size={48} />
+                <p className="font-medium">Aucune tâche active</p>
+                <p className="text-sm">Créez votre première tâche !</p>
+              </div>
+            ) : (
+              filteredAllTasks.map(task => (
+                <TaskItemDashboard key={task.id} task={task} toggleTask={toggleTask} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {showTaskForm && (
         <TaskFormModalWithTheme
@@ -891,6 +926,61 @@ function Dashboard() {
           onClose={() => setShowTaskForm(false)}
         />
       )}
+    </div>
+  );
+}
+
+function TaskItemDashboard({ task, toggleTask }) {
+  return (
+    <div className="p-4">
+      <div className="flex items-start gap-3">
+        <button onClick={() => toggleTask(task.id)} className="mt-1">
+          {task.completed ? (
+            <CheckCircle className="text-green-500" size={20} />
+          ) : (
+            <Circle className="text-gray-400" size={20} />
+          )}
+        </button>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
+              {task.projectName && (
+                <span className="text-gray-600">{task.projectName} → </span>
+              )}
+              {task.title}
+            </h3>
+            {task.themeName && (
+              <span
+                className="px-2 py-0.5 rounded text-xs font-medium"
+                style={{ backgroundColor: task.themeColor + '20', color: task.themeColor }}
+              >
+                {task.themeName}
+              </span>
+            )}
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+              task.priority === 1 ? 'bg-red-100 text-red-700' :
+              task.priority === 2 ? 'bg-orange-100 text-orange-700' :
+              'bg-green-100 text-green-700'
+            }`}>
+              P{task.priority}
+            </span>
+          </div>
+          
+          {task.description && (
+            <p className="text-sm text-gray-500 mb-2">{task.description}</p>
+          )}
+          
+          {task.deadline && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="flex items-center gap-1 text-gray-500">
+                <Calendar size={14} />
+                {task.deadline}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
