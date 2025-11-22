@@ -766,6 +766,7 @@ function Dashboard() {
   const [showThisWeek, setShowThisWeek] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [filterTheme, setFilterTheme] = useState('all');
+  const [filterTaskPriority, setFilterTaskPriority] = useState('all');
   const [sortByDate, setSortByDate] = useState('recent');
   
   const urgentTasks = getUrgentTasks();
@@ -795,6 +796,10 @@ function Dashboard() {
   
   if (filterTheme !== 'all') {
     filteredAllTasks = filteredAllTasks.filter(t => t.themeId === filterTheme);
+  }
+  
+  if (filterTaskPriority !== 'all') {
+    filteredAllTasks = filteredAllTasks.filter(t => t.priority === parseInt(filterTaskPriority));
   }
   
   filteredAllTasks = [...filteredAllTasks].sort((a, b) => {
@@ -966,6 +971,20 @@ function Dashboard() {
                   {themes.map(theme => (
                     <option key={theme.id} value={theme.id}>{theme.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par priorité</label>
+                <select
+                  value={filterTaskPriority}
+                  onChange={(e) => setFilterTaskPriority(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">Toutes les priorités</option>
+                  <option value="1">P1 uniquement</option>
+                  <option value="2">P2 uniquement</option>
+                  <option value="3">P3 uniquement</option>
                 </select>
               </div>
 
