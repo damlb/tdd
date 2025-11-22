@@ -349,6 +349,19 @@ function AppProvider({ children }) {
     }
   };
 
+  const updateChecklistItem = async (itemId, newText) => {
+    const { data, error } = await supabase
+      .from('checklist_items')
+      .update({ text: newText })
+      .eq('id', itemId)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setChecklistItems(checklistItems.map(item => item.id === itemId ? data : item));
+    }
+  };
+
   const reorderChecklistItems = async (projectId, items) => {
     const updates = items.map((item, index) => ({
       id: item.id,
@@ -424,6 +437,7 @@ function AppProvider({ children }) {
     deleteTask,
     addChecklistItem,
     toggleChecklistItem,
+    updateChecklistItem,
     reorderChecklistItems,
     getUrgentTasks,
     signOut
@@ -1052,7 +1066,7 @@ function TaskItemDashboard({ task, toggleTask }) {
 }
 
 function Projects() {
-  const { themes, projects, tasks, checklistItems, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask, addChecklistItem, toggleChecklistItem, reorderChecklistItems } = useApp();
+  const { themes, projects, tasks, checklistItems, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask, addChecklistItem, toggleChecklistItem, updateChecklistItem, reorderChecklistItems } = useApp();
   const [expandedPriorities, setExpandedPriorities] = useState({ 1: true, 2: false, 3: false });
   const [expandedProjects, setExpandedProjects] = useState({});
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -1328,6 +1342,7 @@ function Projects() {
                                 checklistItems={checklistItems}
                                 addChecklistItem={addChecklistItem}
                                 toggleChecklistItem={toggleChecklistItem}
+                                updateChecklistItem={updateChecklistItem}
                                 reorderChecklistItems={reorderChecklistItems}
                               />
 
@@ -1375,13 +1390,6 @@ function Projects() {
                                   </p>
                                 )}
                               </div>
-                              <ChecklistSection 
-  project={project}
-  checklistItems={checklistItems}
-  addChecklistItem={addChecklistItem}
-  toggleChecklistItem={toggleChecklistItem}
-  reorderChecklistItems={reorderChecklistItems}
-/>
                             </div>
                           )}
                         </div>
@@ -1401,7 +1409,7 @@ function Projects() {
           defaultTheme={filterTheme !== 'all' ? filterTheme : themes[0]?.id}
           onClose={() => setShowProjectForm(false)}
           onSubmit={(project) => {
-            addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority });
+            addProject(project.themeId, { name: project.name, description: project.description, priority: project.priority, is_checklist: project.is_checklist });
             setShowProjectForm(false);
           }}
         />
@@ -1417,7 +1425,8 @@ function Projects() {
               name: project.name, 
               description: project.description,
               theme_id: project.themeId,
-              priority: project.priority 
+              priority: project.priority,
+              is_checklist: project.is_checklist
             });
             setEditingProject(null);
           }}
@@ -1524,10 +1533,12 @@ function TaskItem({ task, showCompleted, onDelete, onEdit, onToggle }) {
   );
 }
 
-function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChecklistItem, reorderChecklistItems }) {
+function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChecklistItem, updateChecklistItem, reorderChecklistItems }) {
   const [newItemText, setNewItemText] = useState('');
   const [draggedItem, setDraggedItem] = useState(null);
   const [draggedOverItem, setDraggedOverItem] = useState(null);
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editingText, setEditingText] = useState('');
 
   const projectItems = checklistItems
     .filter(item => item.project_id === project.id)
@@ -1543,6 +1554,28 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       handleAddItem();
+    }
+  };
+
+  const handleStartEdit = (item) => {
+    setEditingItemId(item.id);
+    setEditingText(item.text);
+  };
+
+  const handleSaveEdit = (itemId) => {
+    if (editingText.trim()) {
+      updateChecklistItem(itemId, editingText.trim());
+    }
+    setEditingItemId(null);
+    setEditingText('');
+  };
+
+  const handleKeyPressEdit = (e, itemId) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit(itemId);
+    } else if (e.key === 'Escape') {
+      setEditingItemId(null);
+      setEditingText('');
     }
   };
 
@@ -1588,7 +1621,7 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
   if (!project.is_checklist) return null;
 
   return (
-    <div className="mt-4 pt-4 border-t">
+    <div className="mb-4 pb-4 border-b">
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-medium text-sm">Liste de courses</h4>
         <span className="text-xs text-gray-500">{projectItems.length} élément{projectItems.length > 1 ? 's' : ''}</span>
@@ -1599,22 +1632,26 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
           {projectItems.map((item) => (
             <div
               key={item.id}
-              draggable
+              draggable={editingItemId !== item.id}
               onDragStart={(e) => handleDragStart(e, item)}
               onDragEnd={handleDragEnd}
               onDragOver={handleDragOver}
               onDragEnter={(e) => handleDragEnter(e, item)}
               onDrop={(e) => handleDrop(e, item)}
-              className={`flex items-center gap-3 p-3 bg-white border rounded-lg cursor-move hover:bg-gray-50 transition-all ${
+              className={`flex items-center gap-3 p-3 bg-white border rounded-lg ${
+                editingItemId === item.id ? '' : 'cursor-move hover:bg-gray-50'
+              } transition-all ${
                 draggedOverItem?.id === item.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
               }`}
             >
               <div className="flex items-center gap-3 flex-1">
-                <div className="text-gray-400 cursor-grab active:cursor-grabbing">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                  </svg>
-                </div>
+                {editingItemId !== item.id && (
+                  <div className="text-gray-400 cursor-grab active:cursor-grabbing">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                    </svg>
+                  </div>
+                )}
                 
                 <button
                   onClick={() => toggleChecklistItem(item.id)}
@@ -1623,7 +1660,24 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
                   <Circle className="text-gray-400 hover:text-blue-500" size={20} />
                 </button>
                 
-                <span className="text-sm text-gray-700 flex-1">{item.text}</span>
+                {editingItemId === item.id ? (
+                  <input
+                    type="text"
+                    value={editingText}
+                    onChange={(e) => setEditingText(e.target.value)}
+                    onKeyDown={(e) => handleKeyPressEdit(e, item.id)}
+                    onBlur={() => handleSaveEdit(item.id)}
+                    autoFocus
+                    className="flex-1 px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <span 
+                    onClick={() => handleStartEdit(item)}
+                    className="text-sm text-gray-700 flex-1 cursor-text hover:bg-gray-100 px-2 py-1 rounded"
+                  >
+                    {item.text}
+                  </span>
+                )}
               </div>
             </div>
           ))}
