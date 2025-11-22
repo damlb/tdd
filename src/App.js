@@ -775,7 +775,7 @@ function Dashboard() {
 
   const overdueTasks = urgentTasks.filter(t => t.deadline < today);
   const todayTasks = urgentTasks.filter(t => t.deadline === today);
-  const thisWeekTasks = urgentTasks.filter(t => t.deadline > today && t.deadline <= nextWeek);
+  const thisWeekTasks = urgentTasks.filter(t => t.deadline >= today && t.deadline <= nextWeek);
   
   const allActiveTasks = tasks
     .filter(t => !t.completed)
@@ -1076,6 +1076,7 @@ function Projects() {
   const [activeProject, setActiveProject] = useState(null);
   const [filterTheme, setFilterTheme] = useState('all');
   const [filterTaskPriority, setFilterTaskPriority] = useState('all');
+  const [filterProjectPriority, setFilterProjectPriority] = useState('all');
   const [filterStatus, setFilterStatus] = useState('active');
   const [sortBy, setSortBy] = useState('name');
   const [searchText, setSearchText] = useState('');
@@ -1143,7 +1144,11 @@ function Projects() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold mb-2">Projets</h1>
+            <h1 className="text-2xl lg:text-3xl font-bold mb-2">
+              {activeTheme && filterTheme !== 'all' 
+                ? themes.find(t => t.id === activeTheme)?.name || 'Projets'
+                : 'Projets'}
+            </h1>
             <div className="flex gap-4 text-sm">
               <button
                 onClick={() => setFilterStatus('active')}
@@ -1231,14 +1236,16 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Trier par</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des projets</label>
                 <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  value={filterProjectPriority}
+                  onChange={(e) => setFilterProjectPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="name">Nom</option>
-                  <option value="theme">Theme</option>
+                  <option value="all">Toutes les priorités</option>
+                  <option value="1">P1 uniquement</option>
+                  <option value="2">P2 uniquement</option>
+                  <option value="3">P3 uniquement</option>
                 </select>
               </div>
             </div>
@@ -1254,7 +1261,9 @@ function Projects() {
       </button>
 
       <div className="space-y-3">
-        {[1, 2, 3].map(priority => (
+        {[1, 2, 3]
+          .filter(priority => filterProjectPriority === 'all' || parseInt(filterProjectPriority) === priority)
+          .map(priority => (
           <div key={priority} className="bg-white rounded-lg shadow-sm border">
             <button
               onClick={() => togglePriority(priority)}
@@ -1267,7 +1276,7 @@ function Projects() {
                   priority === 2 ? 'text-orange-600' :
                   'text-green-600'
                 }`}>
-                  Priorité {priority} - {priority === 1 ? 'Haute' : priority === 2 ? 'Moyenne' : 'Basse'} ({projectsByPriority[priority].length})
+                  P{priority} ({projectsByPriority[priority].length})
                 </h2>
               </div>
             </button>
