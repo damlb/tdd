@@ -391,13 +391,13 @@ function AppProvider({ children }) {
   };
 
   const shareProject = async (projectId, email, accessLevel) => {
-    // VÃ©rifier la limite de 5 partages
+    // Vérifier la limite de 5 partages
     const existingShares = projectShares.filter(s => s.project_id === projectId && s.status !== 'revoked');
     if (existingShares.length >= 5) {
       throw new Error('Limite de 5 partages atteinte pour ce projet');
     }
 
-    // GÃ©nÃ©rer un token unique
+    // Générer un token unique
     const inviteToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
 
     const { data, error } = await supabase
@@ -438,11 +438,14 @@ function AppProvider({ children }) {
 
   const getUrgentTasks = () => {
     const today = new Date().toISOString().split('T')[0];
+    const todayDate = new Date(today);
+    const nextWeek = new Date(todayDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
     return tasks
       .filter(task => {
         if (task.completed) return false;
         if (!task.deadline) return false;
-        return task.deadline <= today;
+        return task.deadline <= nextWeek; // Inclut jusqu'à 7 jours dans le futur
       })
       .map(task => {
         const project = projects.find(p => p.id === task.project_id);
@@ -648,11 +651,11 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
 
   const handleNext = () => {
     if (step === 1 && !selectedTheme) {
-      setError('Veuillez sÃ©lectionner un thÃ¨me');
+      setError('Veuillez sélectionner un thème');
       return;
     }
     if (step === 2 && !selectedProject) {
-      setError('Veuillez sÃ©lectionner un projet');
+      setError('Veuillez sélectionner un projet');
       return;
     }
     setError('');
@@ -665,7 +668,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
       return;
     }
     if (!priority) {
-      setError('Veuillez sÃ©lectionner une prioritÃ©');
+      setError('Veuillez sélectionner une priorité');
       return;
     }
     
@@ -677,7 +680,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
       <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Nouvelle Tache - Ã‰tape {step}/3</h2>
+          <h2 className="text-lg font-bold">Nouvelle Tache - Étape {step}/3</h2>
           <button onClick={onClose} className="p-2">
             <X size={24} />
           </button>
@@ -686,7 +689,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
         <div className="p-4">
           {step === 1 && (
             <div>
-              <label className="block text-sm font-medium mb-2">SÃ©lectionner un thÃ¨me</label>
+              <label className="block text-sm font-medium mb-2">Sélectionner un thème</label>
               <div className="space-y-2">
                 {themes.map(theme => (
                   <button
@@ -706,7 +709,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
 
           {step === 2 && (
             <div>
-              <label className="block text-sm font-medium mb-2">SÃ©lectionner un projet</label>
+              <label className="block text-sm font-medium mb-2">Sélectionner un projet</label>
               <div className="space-y-2">
                 {filteredProjects.map(project => (
                   <button
@@ -727,7 +730,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
                   </button>
                 ))}
                 {filteredProjects.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-4">Aucun projet dans ce thÃ¨me</p>
+                  <p className="text-sm text-gray-500 text-center py-4">Aucun projet dans ce thème</p>
                 )}
               </div>
             </div>
@@ -768,7 +771,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
+                <label className="block text-sm font-medium mb-2">Priorité *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[1, 2, 3].map(p => (
                     <button
@@ -804,7 +807,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
               onClick={step === 3 ? handleSubmit : handleNext}
               className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium"
             >
-              {step === 3 ? 'CrÃ©er' : 'Suivant'}
+              {step === 3 ? 'Créer' : 'Suivant'}
             </button>
           </div>
         </div>
@@ -914,7 +917,7 @@ function Dashboard() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
-          {showAllTasks ? 'Masquer toutes les tÃ¢ches' : 'Toutes les tÃ¢ches'}
+          {showAllTasks ? 'Masquer toutes les tâches' : 'Toutes les tâches'}
         </button>
       </div>
 
@@ -1014,17 +1017,17 @@ function Dashboard() {
       ) : (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold mb-4">Toutes les tÃ¢ches actives ({filteredAllTasks.length})</h2>
+            <h2 className="text-lg font-semibold mb-4">Toutes les tâches actives ({filteredAllTasks.length})</h2>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par thÃ¨me</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par thème</label>
                 <select
                   value={filterTheme}
                   onChange={(e) => setFilterTheme(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Tous les thÃ¨mes</option>
+                  <option value="all">Tous les thèmes</option>
                   {themes.map(theme => (
                     <option key={theme.id} value={theme.id}>{theme.name}</option>
                   ))}
@@ -1032,13 +1035,13 @@ function Dashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par prioritÃ©</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par priorité</label>
                 <select
                   value={filterTaskPriority}
                   onChange={(e) => setFilterTaskPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Toutes les prioritÃ©s</option>
+                  <option value="all">Toutes les priorités</option>
                   <option value="1">P1 uniquement</option>
                   <option value="2">P2 uniquement</option>
                   <option value="3">P3 uniquement</option>
@@ -1052,7 +1055,7 @@ function Dashboard() {
                   onChange={(e) => setSortByDate(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="recent">Plus rÃ©cent</option>
+                  <option value="recent">Plus récent</option>
                   <option value="oldest">Plus ancien</option>
                 </select>
               </div>
@@ -1063,8 +1066,8 @@ function Dashboard() {
             {filteredAllTasks.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <CheckCircle className="mx-auto mb-3 text-gray-400" size={48} />
-                <p className="font-medium">Aucune tÃ¢che active</p>
-                <p className="text-sm">CrÃ©ez votre premiÃ¨re tÃ¢che !</p>
+                <p className="font-medium">Aucune tâche active</p>
+                <p className="text-sm">Créez votre première tâche !</p>
               </div>
             ) : (
               filteredAllTasks.map(task => (
@@ -1500,7 +1503,7 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">PrioritÃ© des tÃ¢ches</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des tâches</label>
                 <select
                   value={filterTaskPriority}
                   onChange={(e) => setFilterTaskPriority(e.target.value)}
@@ -1514,13 +1517,13 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">PrioritÃ© des projets</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des projets</label>
                 <select
                   value={filterProjectPriority}
                   onChange={(e) => setFilterProjectPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Toutes les prioritÃ©s</option>
+                  <option value="all">Toutes les priorités</option>
                   <option value="1">P1 uniquement</option>
                   <option value="2">P2 uniquement</option>
                   <option value="3">P3 uniquement</option>
@@ -1563,7 +1566,7 @@ function Projects() {
               <div className="border-t">
                 {projectsByPriority[priority].length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
-                    <p className="text-sm">Aucun projet de prioritÃ© {priority}</p>
+                    <p className="text-sm">Aucun projet de priorité {priority}</p>
                   </div>
                 ) : (
                   <div className="divide-y">
@@ -1928,7 +1931,7 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
     <div className="mb-4 pb-4 border-b">
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-medium text-sm">Liste de courses</h4>
-        <span className="text-xs text-gray-500">{projectItems.length} Ã©lÃ©ment{projectItems.length > 1 ? 's' : ''}</span>
+        <span className="text-xs text-gray-500">{projectItems.length} élément{projectItems.length > 1 ? 's' : ''}</span>
       </div>
 
       {projectItems.length > 0 && (
@@ -1994,7 +1997,7 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
           value={newItemText}
           onChange={(e) => setNewItemText(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Ajouter un Ã©lÃ©ment..."
+          placeholder="Ajouter un élément..."
           className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -2023,11 +2026,11 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
       return;
     }
     if (!themeId) {
-      setError('Veuillez sÃ©lectionner un thÃ¨me');
+      setError('Veuillez sélectionner un thème');
       return;
     }
     if (!priority) {
-      setError('Veuillez sÃ©lectionner une prioritÃ©');
+      setError('Veuillez sélectionner une priorité');
       return;
     }
     
@@ -2086,7 +2089,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
+              <label className="block text-sm font-medium mb-2">Priorité *</label>
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3].map(p => (
                   <button
@@ -2117,7 +2120,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
                 />
                 <span className="text-sm font-medium text-gray-700">Ajouter liste cochable</span>
               </label>
-              <p className="text-xs text-gray-500 mt-1 ml-8">CrÃ©er une liste de courses par exemple</p>
+              <p className="text-xs text-gray-500 mt-1 ml-8">Créer une liste de courses par exemple</p>
             </div>
             
             <div className="flex gap-2">
@@ -2158,7 +2161,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
       return;
     }
     if (!priority) {
-      setError('Veuillez sÃ©lectionner une prioritÃ©');
+      setError('Veuillez sélectionner une priorité');
       return;
     }
     
@@ -2210,7 +2213,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
             </div>
             
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
+              <label className="block text-sm font-medium mb-2">Priorité *</label>
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3].map(p => (
                   <button
