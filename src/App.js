@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from './supabaseClient';
-import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut, AlertCircle } from 'lucide-react';
+import { Menu, X, Plus, Circle, CheckCircle, Calendar, Home, ChevronRight, ChevronDown, LogOut, AlertCircle, Share2, UserCheck } from 'lucide-react';
 
 const AppContext = createContext();
 const useApp = () => useContext(AppContext);
@@ -122,6 +122,7 @@ function AppProvider({ children }) {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [checklistItems, setChecklistItems] = useState([]);
+  const [projectShares, setProjectShares] = useState([]);
   const [activeTheme, setActiveTheme] = useState(null);
   const [view, setView] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -168,10 +169,16 @@ function AppProvider({ children }) {
         .select('*')
         .order('position', { ascending: true });
 
+      const { data: sharesData } = await supabase
+        .from('project_shares')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       setThemes(themesData || []);
       setProjects(projectsData || []);
       setTasks(tasksData || []);
       setChecklistItems(checklistData || []);
+      setProjectShares(sharesData || []);
 
       if (themesData && themesData.length > 0 && !activeTheme) {
         setActiveTheme(themesData[0].id);
@@ -383,6 +390,52 @@ function AppProvider({ children }) {
     );
   };
 
+  const shareProject = async (projectId, email, accessLevel) => {
+    // VÃ©rifier la limite de 5 partages
+    const existingShares = projectShares.filter(s => s.project_id === projectId && s.status !== 'revoked');
+    if (existingShares.length >= 5) {
+      throw new Error('Limite de 5 partages atteinte pour ce projet');
+    }
+
+    // GÃ©nÃ©rer un token unique
+    const inviteToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    const { data, error } = await supabase
+      .from('project_shares')
+      .insert([{
+        project_id: projectId,
+        owner_id: user.id,
+        shared_with_email: email,
+        access_level: accessLevel,
+        invite_token: inviteToken,
+        status: 'pending'
+      }])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setProjectShares([...projectShares, data]);
+      return data;
+    } else {
+      throw error;
+    }
+  };
+
+  const revokeShare = async (shareId) => {
+    const { error } = await supabase
+      .from('project_shares')
+      .update({ status: 'revoked' })
+      .eq('id', shareId);
+
+    if (!error) {
+      setProjectShares(projectShares.map(s => s.id === shareId ? { ...s, status: 'revoked' } : s));
+    }
+  };
+
+  const getProjectShares = (projectId) => {
+    return projectShares.filter(s => s.project_id === projectId && s.status !== 'revoked');
+  };
+
   const getUrgentTasks = () => {
     const today = new Date().toISOString().split('T')[0];
     return tasks
@@ -419,6 +472,7 @@ function AppProvider({ children }) {
     projects,
     tasks,
     checklistItems,
+    projectShares,
     activeTheme,
     setActiveTheme,
     view,
@@ -439,6 +493,9 @@ function AppProvider({ children }) {
     toggleChecklistItem,
     updateChecklistItem,
     reorderChecklistItems,
+    shareProject,
+    revokeShare,
+    getProjectShares,
     getUrgentTasks,
     signOut
   };
@@ -591,11 +648,11 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
 
   const handleNext = () => {
     if (step === 1 && !selectedTheme) {
-      setError('Veuillez sélectionner un thème');
+      setError('Veuillez sÃ©lectionner un thÃ¨me');
       return;
     }
     if (step === 2 && !selectedProject) {
-      setError('Veuillez sélectionner un projet');
+      setError('Veuillez sÃ©lectionner un projet');
       return;
     }
     setError('');
@@ -608,7 +665,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
       return;
     }
     if (!priority) {
-      setError('Veuillez sélectionner une priorité');
+      setError('Veuillez sÃ©lectionner une prioritÃ©');
       return;
     }
     
@@ -620,7 +677,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end lg:items-center justify-center z-50">
       <div className="bg-white rounded-t-2xl lg:rounded-lg w-full lg:max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Nouvelle Tache - Étape {step}/3</h2>
+          <h2 className="text-lg font-bold">Nouvelle Tache - Ã‰tape {step}/3</h2>
           <button onClick={onClose} className="p-2">
             <X size={24} />
           </button>
@@ -629,7 +686,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
         <div className="p-4">
           {step === 1 && (
             <div>
-              <label className="block text-sm font-medium mb-2">Sélectionner un thème</label>
+              <label className="block text-sm font-medium mb-2">SÃ©lectionner un thÃ¨me</label>
               <div className="space-y-2">
                 {themes.map(theme => (
                   <button
@@ -649,7 +706,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
 
           {step === 2 && (
             <div>
-              <label className="block text-sm font-medium mb-2">Sélectionner un projet</label>
+              <label className="block text-sm font-medium mb-2">SÃ©lectionner un projet</label>
               <div className="space-y-2">
                 {filteredProjects.map(project => (
                   <button
@@ -670,7 +727,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
                   </button>
                 ))}
                 {filteredProjects.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-4">Aucun projet dans ce thème</p>
+                  <p className="text-sm text-gray-500 text-center py-4">Aucun projet dans ce thÃ¨me</p>
                 )}
               </div>
             </div>
@@ -711,7 +768,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-2">Priorité *</label>
+                <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[1, 2, 3].map(p => (
                     <button
@@ -747,7 +804,7 @@ function TaskFormModalWithTheme({ themes, projects, onClose }) {
               onClick={step === 3 ? handleSubmit : handleNext}
               className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium"
             >
-              {step === 3 ? 'Créer' : 'Suivant'}
+              {step === 3 ? 'CrÃ©er' : 'Suivant'}
             </button>
           </div>
         </div>
@@ -857,7 +914,7 @@ function Dashboard() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
-          {showAllTasks ? 'Masquer toutes les tâches' : 'Toutes les tâches'}
+          {showAllTasks ? 'Masquer toutes les tÃ¢ches' : 'Toutes les tÃ¢ches'}
         </button>
       </div>
 
@@ -957,17 +1014,17 @@ function Dashboard() {
       ) : (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold mb-4">Toutes les tâches actives ({filteredAllTasks.length})</h2>
+            <h2 className="text-lg font-semibold mb-4">Toutes les tÃ¢ches actives ({filteredAllTasks.length})</h2>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par thème</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par thÃ¨me</label>
                 <select
                   value={filterTheme}
                   onChange={(e) => setFilterTheme(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Tous les thèmes</option>
+                  <option value="all">Tous les thÃ¨mes</option>
                   {themes.map(theme => (
                     <option key={theme.id} value={theme.id}>{theme.name}</option>
                   ))}
@@ -975,13 +1032,13 @@ function Dashboard() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par priorité</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filtrer par prioritÃ©</label>
                 <select
                   value={filterTaskPriority}
                   onChange={(e) => setFilterTaskPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Toutes les priorités</option>
+                  <option value="all">Toutes les prioritÃ©s</option>
                   <option value="1">P1 uniquement</option>
                   <option value="2">P2 uniquement</option>
                   <option value="3">P3 uniquement</option>
@@ -995,7 +1052,7 @@ function Dashboard() {
                   onChange={(e) => setSortByDate(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="recent">Plus récent</option>
+                  <option value="recent">Plus rÃ©cent</option>
                   <option value="oldest">Plus ancien</option>
                 </select>
               </div>
@@ -1006,8 +1063,8 @@ function Dashboard() {
             {filteredAllTasks.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <CheckCircle className="mx-auto mb-3 text-gray-400" size={48} />
-                <p className="font-medium">Aucune tâche active</p>
-                <p className="text-sm">Créez votre première tâche !</p>
+                <p className="font-medium">Aucune tÃ¢che active</p>
+                <p className="text-sm">CrÃ©ez votre premiÃ¨re tÃ¢che !</p>
               </div>
             ) : (
               filteredAllTasks.map(task => (
@@ -1045,7 +1102,7 @@ function TaskItemDashboard({ task, toggleTask }) {
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <h3 className={`font-medium text-sm ${task.completed ? 'line-through text-gray-400' : ''}`}>
               {task.projectName && (
-                <span className="text-gray-600">{task.projectName} → </span>
+                <span className="text-gray-600">{task.projectName} â†’ </span>
               )}
               {task.title}
             </h3>
@@ -1084,8 +1141,209 @@ function TaskItemDashboard({ task, toggleTask }) {
   );
 }
 
+function ShareProjectModal({ project, onClose }) {
+  const { shareProject, revokeShare, getProjectShares, projectShares } = useApp();
+  const [email, setEmail] = useState('');
+  const [accessLevel, setAccessLevel] = useState('read');
+  const [isLoading, setIsLoading] = useState(false);
+  const [shares, setShares] = useState([]);
+
+  useEffect(() => {
+    if (project) {
+      const projectSharesList = getProjectShares(project.id);
+      setShares(projectSharesList);
+    }
+  }, [project, projectShares]);
+
+  const handleShare = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    // Vérifier la limite de 5 partages
+    if (shares.length >= 5) {
+      window.alert('Vous avez atteint la limite de 5 personnes par projet');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await shareProject(project.id, email.trim(), accessLevel);
+      setEmail('');
+      setAccessLevel('read');
+      
+      // Rafraîchir la liste
+      const updatedShares = getProjectShares(project.id);
+      setShares(updatedShares);
+    } catch (error) {
+      window.alert('Erreur lors du partage : ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRevoke = async (shareId) => {
+    if (!window.confirm('Voulez-vous vraiment révoquer cet accès ?')) return;
+    
+    setIsLoading(true);
+    try {
+      await revokeShare(shareId);
+      
+      // Rafraîchir la liste
+      const updatedShares = getProjectShares(project.id);
+      setShares(updatedShares);
+    } catch (error) {
+      window.alert('Erreur lors de la révocation : ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const badges = {
+      pending: { text: 'En attente', color: 'bg-yellow-100 text-yellow-800' },
+      active: { text: 'Actif', color: 'bg-green-100 text-green-800' },
+      revoked: { text: 'Révoqué', color: 'bg-red-100 text-red-800' }
+    };
+    return badges[status] || badges.pending;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Share2 className="h-6 w-6 text-blue-600" />
+            <h2 className="text-xl font-semibold text-gray-900">
+              Partager : {project.name}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <X className="h-6 w-6 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Formulaire d'ajout */}
+          <form onSubmit={handleShare} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email de la personne à inviter
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@exemple.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Niveau d'accès
+              </label>
+              <select
+                value={accessLevel}
+                onChange={(e) => setAccessLevel(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isLoading}
+              >
+                <option value="read">Lecture seule</option>
+                <option value="edit">Modifier les tâches</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {accessLevel === 'read' 
+                  ? 'La personne pourra voir le projet et les tâches' 
+                  : 'La personne pourra modifier les tâches (mais pas supprimer le projet)'}
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || shares.length >= 5}
+              className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Envoi...' : shares.length >= 5 ? 'Limite atteinte (5 personnes max)' : 'Envoyer l\'invitation'}
+            </button>
+          </form>
+
+          {/* Liste des partages existants */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Personnes ayant accès ({shares.length}/5)
+            </h3>
+
+            {shares.length === 0 ? (
+              <p className="text-gray-500 text-sm italic">
+                Aucun partage pour le moment
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {shares.map(share => {
+                  const badge = getStatusBadge(share.status);
+                  return (
+                    <div
+                      key={share.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {share.shared_with_email}
+                          </span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${badge.color}`}>
+                            {badge.text}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Accès : {share.access_level === 'read' ? 'Lecture seule' : 'Modification'}
+                        </div>
+                        {share.accepted_at && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Accepté le {new Date(share.accepted_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+
+                      {share.status !== 'revoked' && (
+                        <button
+                          onClick={() => handleRevoke(share.id)}
+                          disabled={isLoading}
+                          className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                          title="Révoquer l'accès"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-gray-200">
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Projects() {
-  const { themes, projects, tasks, checklistItems, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask, addChecklistItem, toggleChecklistItem, updateChecklistItem, reorderChecklistItems } = useApp();
+  const { themes, projects, tasks, checklistItems, projectShares, activeTheme, setActiveTheme, addProject, updateProject, deleteProject, addTask, updateTask, toggleTask, deleteTask, addChecklistItem, toggleChecklistItem, updateChecklistItem, reorderChecklistItems, shareProject, revokeShare, getProjectShares } = useApp();
   const [expandedPriorities, setExpandedPriorities] = useState({ 1: true, 2: false, 3: false });
   const [expandedProjects, setExpandedProjects] = useState({});
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -1093,6 +1351,7 @@ function Projects() {
   const [editingProject, setEditingProject] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [activeProject, setActiveProject] = useState(null);
+  const [sharingProject, setSharingProject] = useState(null);
   const [filterTheme, setFilterTheme] = useState('all');
   const [filterTaskPriority, setFilterTaskPriority] = useState('all');
   const [filterProjectPriority, setFilterProjectPriority] = useState('all');
@@ -1241,7 +1500,7 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des tâches</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">PrioritÃ© des tÃ¢ches</label>
                 <select
                   value={filterTaskPriority}
                   onChange={(e) => setFilterTaskPriority(e.target.value)}
@@ -1255,13 +1514,13 @@ function Projects() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Priorité des projets</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">PrioritÃ© des projets</label>
                 <select
                   value={filterProjectPriority}
                   onChange={(e) => setFilterProjectPriority(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">Toutes les priorités</option>
+                  <option value="all">Toutes les prioritÃ©s</option>
                   <option value="1">P1 uniquement</option>
                   <option value="2">P2 uniquement</option>
                   <option value="3">P3 uniquement</option>
@@ -1304,7 +1563,7 @@ function Projects() {
               <div className="border-t">
                 {projectsByPriority[priority].length === 0 ? (
                   <div className="p-8 text-center text-gray-500">
-                    <p className="text-sm">Aucun projet de priorité {priority}</p>
+                    <p className="text-sm">Aucun projet de prioritÃ© {priority}</p>
                   </div>
                 ) : (
                   <div className="divide-y">
@@ -1359,6 +1618,16 @@ function Projects() {
                                 <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                 </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSharingProject(project);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded transition-opacity"
+                                title="Partager le projet"
+                              >
+                                <Share2 className="w-4 h-4 text-gray-600" />
                               </button>
                             </div>
                           </div>
@@ -1464,6 +1733,13 @@ function Projects() {
               setEditingProject(null);
             }
           }}
+        />
+      )}
+
+      {sharingProject && (
+        <ShareProjectModal
+          project={sharingProject}
+          onClose={() => setSharingProject(null)}
         />
       )}
 
@@ -1652,7 +1928,7 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
     <div className="mb-4 pb-4 border-b">
       <div className="flex items-center justify-between mb-3">
         <h4 className="font-medium text-sm">Liste de courses</h4>
-        <span className="text-xs text-gray-500">{projectItems.length} élément{projectItems.length > 1 ? 's' : ''}</span>
+        <span className="text-xs text-gray-500">{projectItems.length} Ã©lÃ©ment{projectItems.length > 1 ? 's' : ''}</span>
       </div>
 
       {projectItems.length > 0 && (
@@ -1718,7 +1994,7 @@ function ChecklistSection({ project, checklistItems, addChecklistItem, toggleChe
           value={newItemText}
           onChange={(e) => setNewItemText(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Ajouter un élément..."
+          placeholder="Ajouter un Ã©lÃ©ment..."
           className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -1747,11 +2023,11 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
       return;
     }
     if (!themeId) {
-      setError('Veuillez sélectionner un thème');
+      setError('Veuillez sÃ©lectionner un thÃ¨me');
       return;
     }
     if (!priority) {
-      setError('Veuillez sélectionner une priorité');
+      setError('Veuillez sÃ©lectionner une prioritÃ©');
       return;
     }
     
@@ -1810,7 +2086,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Priorité *</label>
+              <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3].map(p => (
                   <button
@@ -1841,7 +2117,7 @@ function ProjectFormModal({ themes, project, defaultTheme, onClose, onSubmit, on
                 />
                 <span className="text-sm font-medium text-gray-700">Ajouter liste cochable</span>
               </label>
-              <p className="text-xs text-gray-500 mt-1 ml-8">Créer une liste de courses par exemple</p>
+              <p className="text-xs text-gray-500 mt-1 ml-8">CrÃ©er une liste de courses par exemple</p>
             </div>
             
             <div className="flex gap-2">
@@ -1882,7 +2158,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
       return;
     }
     if (!priority) {
-      setError('Veuillez sélectionner une priorité');
+      setError('Veuillez sÃ©lectionner une prioritÃ©');
       return;
     }
     
@@ -1934,7 +2210,7 @@ function TaskFormModal({ task, onClose, onSubmit, onDelete }) {
             </div>
             
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Priorité *</label>
+              <label className="block text-sm font-medium mb-2">PrioritÃ© *</label>
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3].map(p => (
                   <button
